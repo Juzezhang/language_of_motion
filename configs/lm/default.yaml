@@ -1,0 +1,30 @@
+target: lom.archs.lom.MLM
+params:
+  model_type: t5
+  model_path: ./models/flan-t5-base
+  stage: ${TRAIN.STAGE}
+  motion_codebook_size: ${model.params.codebook_size}
+  ablation: ${ABLATION}
+  max_length: 512
+  motion_down_sampling: 1
+  audio_down_sampling: 320
+  audio_samplerate: 16000.0
+  modalities:
+    motion:
+      codebook_size: 0
+      prefix: "motion_id"
+    face:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "face_id"
+    hand:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "hand_id"
+    upper:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "upper_id"
+    lower:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "lower_id"
+    audio:
+      codebook_size: 502 # pure audio we add 3, but we have audio_transcript further 2
+      prefix: "audio_id"

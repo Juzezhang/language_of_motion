@@ -1,0 +1,8 @@
+target: lom.archs.lom_vq.VQVAEConvZeroDSUS
+params:
+  vae_layer: 2
+  code_num: 256
+  vae_test_dim: 330
+  codebook_size: 256
+#  code_num: 512
+  vae_quantizer_lambda: 1

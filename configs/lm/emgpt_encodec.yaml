@@ -1,0 +1,8 @@
+target: lom.archs.emgpt_lm.MLM
+params:
+  model_type: t5
+  model_path: ./deps/flan-t5-base
+  stage: ${TRAIN.STAGE}
+  motion_codebook_size: ${model.params.codebook_size}
+  audio_codebook_size: 1024
+  ablation: ${ABLATION}

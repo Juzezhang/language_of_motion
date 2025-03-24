@@ -1,0 +1,13 @@
+target: mGPT.archs.motion_representation.VQVAEConvZero
+params:
+  vae_test_len: 32
+  vae_test_dim: 330
+  vae_test_stride: 20
+  vae_length: 240
+  vae_codebook_size: 256
+  vae_layer: 4
+  vae_grow: [1,1,2,1]
+  variational: False
+  vae_quantizer_lambda: 1.0
+  e_name: VAESKConv
+  data_path_1: ./models/

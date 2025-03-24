@@ -1,0 +1,124 @@
+NAME: VQVAE_AMASS_vq_40 # Experiment names
+ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
+NUM_NODES: 1 # Number of GPU nodes for distributed training
+DEVICE: [0,1,2,3,4,5,6,7] # Index of gpus eg. [0] or [0,1,2,3]
+
+Selected_part: full  # defaut upper
+Body_parts:
+  upper:
+    ori: beat_smplx_joints
+    tar: beat_smplx_upper
+    vae_test_dim: 78
+  lower:
+    ori: beat_smplx_joints
+    tar: beat_smplx_lower
+    vae_test_dim: 61
+  full:
+    ori: beat_smplx_joints
+    tar: beat_smplx_full
+    vae_test_dim: 330
+  full_new_loss:
+    ori: beat_smplx_joints
+    tar: beat_smplx_full
+    vae_test_dim: 337
+  full_h3d:
+    ori: beat_smplx_joints
+    tar: beat_smplx_full
+    vae_test_dim: 263
+
+
+TRAIN:
+  #---------------------------------
+  STAGE: vae # stage "vae" , "lm_pretrain", "lm_instruct"
+  #---------------------------------
+  NUM_WORKERS: 16 # Number of workers
+  BATCH_SIZE: 16 # Size of batches
+  END_EPOCH: 999999 # End epoch
+  RESUME: '' # Resume training from this path
+  PRETRAINED: '' # Preatrained model path
+  PRECISION: '32'
+
+
+  OPTIM:
+    target: Adam
+    params:
+      lr: 2.5e-4
+      betas: [0.5, 0.99]
+      weight_decay: 0.0
+
+# Evaluating Configuration
+EVAL:
+  BATCH_SIZE: 32 # Evaluating Batch size
+  SPLIT: test
+
+TEST:
+  CHECKPOINTS: checkpoints/MotionGPT-base/motiongpt_s3_h3d.tar
+  SPLIT: test
+  BATCH_SIZE: 32 # training Batch size
+  SAVE_RESULT: "./experiments/down_sample/result/"
+
+DATASET:
+  target: lom.data.MixedDataset_VQ.MixedDataModule
+  smpl_path: deps/smpl_models
+  vary_length: False
+  pose_length: 40
+  test_length: 240
+  pose_fps: 30
+  e_path:  weights/AESKConv_240_100.bin
+  e_name: VAESKConv
+  pose_rep: smplxflame_30
+  training_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+
+  datasets:
+    - name: "AMASS"
+      data_root: "/nas/nas_38/AI-being/libin/PantoMatrix/amass_smpl"
+      type: "amass"
+      stride: 20
+      pose_length: 64
+      pose_fps: 30
+      multi_length_training: [1.0]
+      code_path: "TOKENS_DS4"
+      instructions_file: "template_instructions_amass.json"
+#    - name: "AMASS_h3d"
+#      data_root: "/nas/nas_32/AI-being/zhangjy/Project/2024/HumanML3D/new_joint_vecs/"
+#      type: "amass_h3d"
+#      stride: 20
+#      pose_length: 40
+#      pose_fps: 20
+#      multi_length_training: [1.0]
+#      code_path: "TOKENS_DS4"
+#      instructions_file: "template_instructions_amass.json"
+
+METRIC:
+  TYPE: []
+
+LOSS:
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_COMMIT: 0.02
+  LAMBDA_CLS: 1.0
+  ABLATION:
+    RECONS_LOSS: 'l1_smooth'
+
+
+model:
+  target: lom.models.mgpt.MotionGPT
+  params:
+    condition: 'text'
+    task: 't2m'
+    lm: ${lm.default}
+    motion_vae:
+      target: lom.archs.emage_vq.VQVAEConvZeroDSUS
+      params:
+        vae_layer: 2
+        code_num: 256
+        codebook_size: 256
+        vae_quantizer_lambda: 1
+        vae_test_dim: ${Body_parts.${Selected_part}.vae_test_dim}  # 动态覆盖
+
+LOGGER:
+  TYPE: ['tensorboard', 'wandb']
+  VAL_EVERY_STEPS: 10
+  WANDB:
+    params:
+      project: motiongpt

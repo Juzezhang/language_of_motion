@@ -1,0 +1,205 @@
+NAME: Pretrain_Mixed # Experiment names
+ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
+NUM_NODES: 1 # Number of GPU nodes for distributed training
+DEVICE: [0] # Index of gpus eg. [0] or [0,1,2,3,4,5,6,7]
+
+Selected_type: separate_rot  # defaut separate_rot
+Representation_type:
+  full_h3d:
+    ori: beat_smplx_joints
+    tar: beat_smplx_full
+    vae_test_dim: 263
+  full_rot:
+    ori: beat_smplx_joints
+    tar: beat_smplx_full
+    vae_test_dim: 330
+  separate_rot:
+    face:
+      ori: beat_smplx_joints
+      tar: beat_smplx_face
+      vae_test_dim: 106
+    hand:
+      ori: beat_smplx_joints
+      tar: beat_smplx_hand
+      vae_test_dim: 180
+    upper:
+      ori: beat_smplx_joints
+      tar: beat_smplx_upper
+      vae_test_dim: 78
+    lower:
+      ori: beat_smplx_joints
+      tar: beat_smplx_lower
+      vae_test_dim: 61
+
+
+TRAIN:
+  #---------------------------------
+  STAGE: lm_pretrain # stage "vae" , "lm_pretrain", "lm_instruct"
+  #---------------------------------
+  NUM_WORKERS: 8 # Number of workers
+  BATCH_SIZE: 16 # Size of batches  12
+  END_EPOCH: 999999 # End epoch
+  PRECISION: 'bf16'
+  FORCE_BF16: False
+  RESUME: '' # Resume training from this path
+  PRETRAINED: '' # Preatrained model path
+  PRETRAINED_VQ: './models/pretrained_vq_emage/vq_emage_speaker_2.ckpt' # Preatrained vq model path
+
+  OPTIM:
+    target: AdamW
+    params:
+      lr: 2e-4
+      betas: [0.9, 0.99]
+      weight_decay: 0.0
+
+# Evaluating Configuration
+EVAL:
+  BATCH_SIZE: 32 # Evaluating Batch size
+  SPLIT: test
+
+TEST:
+#  CHECKPOINTS: checkpoints/MotionGPT-base/motiongpt_s3_h3d.tar
+  CHECKPOINTS: ''
+  SPLIT: test
+  BATCH_SIZE: 1 # training Batch size
+
+DATASET:
+  vary_length: False
+  pose_fps: 30
+  motion_representation: ${Selected_type} # "rotation" or "h3d"
+  target: lom.data.MixedDataset.MixedDataModule
+  datasets:
+    - name: "BEAT2"
+      stride: 20
+      pose_length: 120
+      test_length: 120
+      audio_fps: 16000
+      code_path_audio: "audios_token"
+      training_speakers: [2]
+      testing_speakers: [2]
+      additional_data: False # True or False
+      code_path: "TOKENS_Speaker2"
+      instructions_file: "template_pretrain_beat2.json"
+    - name: "AMASS"
+      stride: 20
+      pose_length: 64
+      code_path: "TOKENS_Speaker2"
+      instructions_file: "template_pretrain_beat2.json"
+
+
+
+  # rot6d: True
+  # pre_frames: 4
+  # pose_dims: 330
+  # stride: 30
+  # motion_f: 256
+  # m_pre_encoder: null
+  # m_encoder: null
+  # m_fix_pre: False
+  # beat_align: True
+  # # facial config
+  # facial_rep: smplxflame_30
+  # facial_dims: 100
+  # facial_norm: False
+  # facial_f: 0
+  # f_pre_encoder: null
+  # f_encoder: null
+  # f_fix_pre: False
+
+  # # speaker config
+  # id_rep: onehot
+  # speaker_f: 0
+
+  # # audio config
+  # audio_rep: onset+amplitude
+  # audio_sr: 16000
+  # audio_fps: 16000
+  # audio_norm: False
+  # audio_f: 256
+
+
+  # # text config
+  # word_rep: textgrid
+  # word_index_num: 11195
+  # word_dims: 300
+  # freeze_wordembed: False
+  # word_f: 256
+  # t_pre_encoder: fasttext
+  # t_encoder: null
+  # t_fix_pre: False
+
+
+METRIC:
+  TYPE: ['CoSpeechMetrics']
+
+
+
+LOSS:
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_COMMIT: 0.02
+  LAMBDA_CLS: 1.0
+  ABLATION:
+    RECONS_LOSS: 'l1_smooth'
+
+model:
+  target: lom.models.lom.Language_Motion
+  params:
+    # condition: 'audio'
+    task: 'a2m'
+    lm: ${lm.lom}
+    # motion_vae: ${vq.emage}
+    audio_setup:
+      params:
+        audio_samplerate: 16000
+        audio_down: 320  ## since the hubert model is trained on 320hz audio, and we found also have another version of hubert model trained on 640 downsampling setup
+
+    modality_tokenizer:
+      vae_face:
+        target: lom.archs.lom_vq.VQVAEConvZero
+        params:
+          vae_layer: 2
+          code_num: 256
+          codebook_size: 256
+          vae_quantizer_lambda: 1
+          vae_test_dim: ${Representation_type.${Selected_type}.face.vae_test_dim}  #dynamic
+      vae_hand:
+        target: lom.archs.lom_vq.VQVAEConvZero
+        params:
+          vae_layer: 2
+          code_num: 256
+          codebook_size: 256
+          vae_quantizer_lambda: 1
+          vae_test_dim: ${Representation_type.${Selected_type}.hand.vae_test_dim}  #dynamic
+      vae_upper:
+        target: lom.archs.lom_vq.VQVAEConvZero
+        params:
+          vae_layer: 2
+          code_num: 256
+          codebook_size: 256
+          vae_quantizer_lambda: 1
+          vae_test_dim: ${Representation_type.${Selected_type}.upper.vae_test_dim}  #dynamic
+      vae_lower:
+        target: lom.archs.lom_vq.VQVAEConvZero
+        params:
+          vae_layer: 4
+          code_num: 256
+          codebook_size: 256
+          vae_quantizer_lambda: 1
+          vae_test_dim: ${Representation_type.${Selected_type}.lower.vae_test_dim}  #dynamic
+      vae_global:
+        target: lom.archs.lom_vq.VAEConvZero
+        params:
+          vae_layer: 4
+          code_num: 256
+          codebook_size: 256
+          vae_quantizer_lambda: 1
+          vae_test_dim: 61
+
+
+LOGGER:
+  TYPE: ['wandb']
+  VAL_EVERY_STEPS: 1
+  WANDB:
+    params:
+      project: language_motion

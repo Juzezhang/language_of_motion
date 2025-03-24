@@ -1,0 +1,24 @@
+target: lom.archs.lom_vq.VQVAEConvZeroDSUS
+#target: mGPT.archs.emage_vq.VAEConv
+params:
+  vae_layer: 2
+  code_num: 256
+  vae_test_dim: 330
+  codebook_size: 256
+#  code_num: 512
+  vae_quantizer_lambda: 1
+
+
+#  quantizer: 'ema_reset'
+#  code_num: 512
+#  code_dim: 512
+#  output_emb_width: 512
+#  down_t: 2
+#  stride_t: 2
+#  width: 512
+#  depth: 3
+#  dilation_growth_rate: 3
+#  norm: None
+#  activation: 'relu'
+#  nfeats: ${DATASET.NFEATS}
+#  ablation: ${ABLATION}

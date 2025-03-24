@@ -1,0 +1,166 @@
+NAME: Instruct_Beat2_Exp_Separate_Hubert25HZ # Experiment names
+ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
+NUM_NODES: 1 # Number of GPU nodes for distributed training
+DEVICE: [1] # Index of gpus eg. [0] or [0,1,2,3,4,5,6,7]
+
+TRAIN:
+  #---------------------------------
+  STAGE: lm_instruct # stage "vae" , "lm_pretrain", "lm_instruct"
+  #---------------------------------
+  NUM_WORKERS: 32 # Number of workers
+  BATCH_SIZE: 12 # Size of batches  12
+  END_EPOCH: 999999 # End epoch
+  PRECISION: 'bf16'
+  FORCE_BF16: False
+  RESUME: '' # Resume training from this path
+  PRETRAINED: '' # Preatrained model path
+  VAE_NAME: VQVAEConvZero
+  PRETRAINED_VAE_FACE: deps/emage_vq/last_790_face_v2.bin
+  PRETRAINED_VAE_HAND: deps/emage_vq/hands_vertex_1layer_710.bin
+  PRETRAINED_VAE_UPPER: deps/emage_vq/upper_vertex_1layer_710.bin
+  PRETRAINED_VAE_LOWER: deps/emage_vq/lower_foot_600.bin
+  PRETRAINED_VAE_GLOBAL: deps/emage_vq/last_1700_foot.bin
+
+
+  OPTIM:
+    target: AdamW
+    params:
+      lr: 2e-4
+      betas: [0.9, 0.99]
+      weight_decay: 0.0
+
+# Evaluating Configuration
+EVAL:
+  BATCH_SIZE: 32 # Evaluating Batch size
+  SPLIT: test
+
+TEST:
+#  CHECKPOINTS: checkpoints/MotionGPT-base/motiongpt_s3_h3d.tar
+  CHECKPOINTS: /data_old/experiments/emgpt_emage/Instruct_Beat2_Exp/checkpoints/epoch=29.ckpt
+  SPLIT: test
+  BATCH_SIZE: 32 # training Batch size
+
+DATASET:
+  target: lom.data.MixedDataset.MixedDataModule
+
+  datasets:
+#    - name: "AMASS"
+#      data_root: "/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/AMASS/"
+#      type: "amass"
+#      code_path: "TOKENS"
+#      instructions_file: "template_instructions_amass.json"
+    - name: "BEAT2"
+      data_root: "/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/beat2_original/beat_v2.0.0/beat_english_v2.0.0/"
+      type: "beat2"
+      code_path: "TOKENS_Speaker2"
+      instructions_file: "template_instructions_beat2_speaker2.json"
+
+  audio_token: "audios_token_25hz"
+  face_vae_layer: 2
+  face_vae_length: 256
+  face_vae_test_dim: 106
+  hand_vae_layer: 2
+  hand_vae_length: 256
+  hand_vae_test_dim: 180
+  upper_vae_layer: 2
+  upper_vae_length: 256
+  upper_vae_test_dim: 78
+  lower_vae_layer: 4
+  lower_vae_length: 256
+  lower_vae_test_dim: 61
+  global_vae_layer: 4
+  global_vae_length: 256
+  global_vae_test_dim: 61
+  vary_length: False
+  CODE_PATH: TOKENS_Speaker2
+  smpl_path: deps/smpl_models
+  training_speakers: [2] #[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+  additional_data: False
+  cache_path: datasets/beat_cache/beat_smplx_en_emage/
+  e_path:  weights/AESKConv_240_100.bin
+  e_name: VAESKConv
+  new_cache: False
+  multi_length_training: [1.0]
+  disable_filtering: False
+  clean_first_seconds: 0
+  clean_final_seconds: 0
+  selected_file: None
+
+  # motion config
+  ori_joints: beat_smplx_joints
+  tar_joints: beat_smplx_full
+  pose_rep: smplxflame_30
+  pose_norm: False
+  pose_fps: 30
+  rot6d: True
+  pre_frames: 4
+  pose_dims: 330
+  pose_length: 120
+  stride: 30
+  test_length: 120
+  motion_f: 256
+  m_pre_encoder: null
+  m_encoder: null
+  m_fix_pre: False
+  beat_align: True
+  # facial config
+  facial_rep: smplxflame_30
+  facial_dims: 100
+  facial_norm: False
+  facial_f: 0
+  f_pre_encoder: null
+  f_encoder: null
+  f_fix_pre: False
+
+  # speaker config
+  id_rep: onehot
+  speaker_f: 0
+
+  # audio config
+  audio_rep: onset+amplitude
+  audio_sr: 16000
+  audio_fps: 16000
+  audio_norm: False
+  audio_f: 256
+
+  # text config
+  word_rep: textgrid
+  word_index_num: 11195
+  word_dims: 300
+  freeze_wordembed: False
+  word_f: 256
+  t_pre_encoder: fasttext
+  t_encoder: null
+  t_fix_pre: False
+
+
+METRIC:
+  TYPE: ['AM2AMetrics_Exp'] ##  AM2AMetrics_Emage  AM2AMetrics_Exp
+#  TYPE: [ 'PredMetrics']
+
+LOSS:
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_COMMIT: 0.02
+  LAMBDA_CLS: 1.0
+  ABLATION:
+    RECONS_LOSS: 'l1_smooth'
+
+model:
+  target: lom.models.emgpt_emage.ExpressionalMotionGPT
+  params:
+    condition: 'audio'
+    task: 'a2m'
+    lm: ${lm.emgpt_flash_attention_beat2}
+    motion_vae: ${vq.emage}
+    audio_setup:
+      params:
+        audio_samplerate: 16000
+        audio_down: 640
+
+LOGGER:
+  TYPE: ['tensorboard', 'wandb']
+  VAL_EVERY_STEPS: 20
+  WANDB:
+    params:
+      project: motiongpt
