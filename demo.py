@@ -253,10 +253,10 @@ def main():
             str(x) for x in cfg.DEVICE)
         device = torch.device("cuda")
 
-    # Dataset
-    datamodule = build_data(cfg)
-    logger.info("datasets module {} initialized".format("".join(
-        cfg.DATASET.target.split('.')[-2])))
+    # # Dataset
+    # datamodule = build_data(cfg)
+    # logger.info("datasets module {} initialized".format("".join(
+    #     cfg.DATASET.target.split('.')[-2])))
 
     # create model
     total_time = time.time()
