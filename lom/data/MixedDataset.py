@@ -2,8 +2,8 @@ import numpy as np
 import torch
 import os 
 from os.path import join as pjoin
-from .humanml.utils.word_vectorizer import WordVectorizer
-from .humanml.scripts.motion_process import (process_file, recover_from_ric)
+from .mixed_dataset.utils.word_vectorizer import WordVectorizer
+from .mixed_dataset.scripts.motion_process import (process_file, recover_from_ric)
 from . import BASEDataModule
 from .mixed_dataset import MixedDatasetVQ, MixedDatasetCB, Audio2MotionDataset
 from .utils import lom_collate

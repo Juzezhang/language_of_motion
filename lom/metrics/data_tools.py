@@ -2,9 +2,9 @@ import numpy as np
 import glob
 import os
 import pickle
-import lmdb
+# import lmdb
 import fasttext
-from loguru import logger
+# from loguru import logger
 from scipy import linalg
 from .pymo.parsers import BVHParser
 from .pymo.viz_tools import *

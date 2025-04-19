@@ -112,15 +112,12 @@ class MLM(nn.Module):
         # Extract length information
         motion_lengths = lengths.get('motion')
         audio_lengths = lengths.get('audio')
-        
         # Extract context information
         emotion_label = context.get('emotion_label')
-        text_timestamp = context.get('text_timestamp')
 
-        face_strings, hand_strings, upper_strings, lower_strings, motion_string = self.compositional_motion_token_to_string(face_tokens, hand_tokens, lower_tokens, upper_tokens, motion_lengths)
+        face_strings, hand_strings, upper_strings, lower_strings, motion_string = self.compositional_motion_token_to_string(face_tokens, hand_tokens, upper_tokens, lower_tokens, motion_lengths)
         audio_strings = self.audio_token_to_string(audio_tokens, audio_lengths)
-        combine_strings = self.audio_transcript_token_to_string(audio_tokens, text_timestamp, audio_lengths)
-        inputs, outputs = self.template_fulfill(tasks, motion_lengths, audio_lengths, face_strings, hand_strings, upper_strings, lower_strings, motion_string, audio_strings, texts, combine_strings, emotion_label)
+        inputs, outputs = self.template_fulfill(tasks, motion_lengths, audio_lengths, face_strings, hand_strings, upper_strings, lower_strings, motion_string, audio_strings, texts, emotion_label)
 
         # Tokenize
         source_encoding = self.tokenizer(inputs,
@@ -156,8 +153,6 @@ class MLM(nn.Module):
 
         return outputs
     
-
-
     def generate_direct(self,
                         input: List[str] = None,
                         max_length: int = 512,
@@ -189,7 +184,7 @@ class MLM(nn.Module):
                                                      skip_special_tokens=True)
 
         face_tokens, hand_tokens, upper_tokens, lower_tokens, cleaned_text = self.motion_string_to_compositional_token(outputs_string)
-        return face_tokens, hand_tokens, lower_tokens, upper_tokens, cleaned_text
+        return face_tokens, hand_tokens, upper_tokens, lower_tokens, cleaned_text
 
     def generate_conditional(self,
                              texts: Optional[List[str]] = None,
@@ -271,23 +266,18 @@ class MLM(nn.Module):
         
         # Extract audio data
         audio_tokens = audio_data.get('tokens')
-        # onset = audio_data.get('onset')
-        # amplitude_envelope = audio_data.get('amplitude_envelope')
-        text_timestamp = context.get('text_timestamp') or audio_data.get('timestamps')
-        
+
         # Extract length information
         motion_lengths = lengths.get('motion')
         audio_lengths = lengths.get('audio')
         
         # Extract context information
-        # combine_strings = context.get('combine_strings')
         emotion_label = context.get('emotion_label')
         
         # Rest of the function implementation
-        if task in ["t2m", "m2m", "pred", "inbetween", "a2m", "at2m"]:
+        if task in ["t2m", "a2m"]:
             # Initialize string variables
             batch_size = 0
-            
             # Determine batch size from available inputs
             if texts is not None:
                 batch_size = len(texts)
@@ -325,19 +315,6 @@ class MLM(nn.Module):
                 }] * batch_size
                 lengths = [0] * batch_size
                 
-            elif task == "at2m":
-                assert audio_tokens is not None, "Audio tokens required for at2m task"
-                audio_lengths = [0] * batch_size if audio_lengths is None else audio_lengths
-                combine_strings = self.audio_transcript_token_to_string(audio_tokens, text_timestamp, audio_lengths)
-                tasks = [{
-                    'input': [
-                        "Given the audio and transcript with precise timestamp alignment in \"<AudioTranscript_Placeholder>\", generate a coordinated motion sequence involving face, hand, upper, and lower body movements."
-                    ],
-                    'output': ['']
-                }] * batch_size
-                
-                lengths = [0] * batch_size
-            
             # Create inputs and outputs from templates
             inputs, outputs = self.template_fulfill(
                 tasks, lengths, audio_lengths,
@@ -347,7 +324,7 @@ class MLM(nn.Module):
             )
             
             # Generate tokens using the language model
-            face_tokens, hand_tokens, lower_tokens, upper_tokens, cleaned_text = self.generate_direct(
+            face_tokens, hand_tokens, upper_tokens, lower_tokens, cleaned_text = self.generate_direct(
                 inputs, max_length=self.max_length, num_beams=1, do_sample=True
             )
             
@@ -355,15 +332,12 @@ class MLM(nn.Module):
             return {
                 'face': face_tokens,
                 'hand': hand_tokens, 
+                'upper': upper_tokens, 
                 'lower': lower_tokens, 
-                'upper': upper_tokens,
                 'text': cleaned_text
             }
         
-        # ... (handle other task types like m2e, m2t, a2t)
-
-
-    def compositional_motion_token_to_string(self, face_token: Tensor, hand_token: Tensor, lower_token: Tensor, upper_token: Tensor, lengths: List[int]):
+    def compositional_motion_token_to_string(self, face_token: Tensor, hand_token: Tensor, upper_token: Tensor, lower_token: Tensor, lengths: List[int]):
         motion_string = []
         face_string = []
         hand_string = []
@@ -374,12 +348,12 @@ class MLM(nn.Module):
         for i in range(len(lengths)):
             face_i = face_token[i].cpu() if face_token[i].device.type == 'cuda' else face_token[i]
             hand_i = hand_token[i].cpu() if hand_token[i].device.type == 'cuda' else hand_token[i]
-            lower_i = lower_token[i].cpu() if lower_token[i].device.type == 'cuda' else lower_token[i]
             upper_i = upper_token[i].cpu() if upper_token[i].device.type == 'cuda' else upper_token[i]
+            lower_i = lower_token[i].cpu() if lower_token[i].device.type == 'cuda' else lower_token[i]
             face_list = face_i.tolist()[:lengths[i]]
             hand_list = hand_i.tolist()[:lengths[i]]
-            lower_list = lower_i.tolist()[:lengths[i]]
             upper_list = upper_i.tolist()[:lengths[i]]
+            lower_list = lower_i.tolist()[:lengths[i]]
 
             face_string_tmp = f'<face_id_{self.face_codebook_size}>'
             for j in range(lengths[i]):
@@ -407,31 +381,11 @@ class MLM(nn.Module):
 
             motion_string_tmp = '<motion_id_0>'
             for j in range(lengths[i]):
-                motion_string_tmp = motion_string_tmp  + ''.join(f'<lower_id_{int(lower_list[j])}>') + ''.join(f'<upper_id_{int(upper_list[j])}>')
+                motion_string_tmp = motion_string_tmp  + ''.join(f'<upper_id_{int(upper_list[j])}>') + ''.join(f'<lower_id_{int(lower_list[j])}>')
             motion_string_tmp += '<motion_id_1>'
             motion_string.append(motion_string_tmp)
 
-
         return face_string, hand_string, upper_string, lower_string, motion_string
-
-
-    def audio_transcript_token_to_string(self, audio_token: Tensor, text_timestamp: Tensor, lengths: List[int]):
-        combined_string = []
-        for i in range(len(audio_token)):
-            if audio_token[i] is None:
-                continue
-            audio_i = audio_token[i].cpu() if audio_token[i].device.type == 'cuda' else audio_token[i]
-            transcript_i = text_timestamp[i]
-
-            audio_list = audio_i.tolist()[:lengths[i]]
-            transcript_list = transcript_i[:lengths[i]]
-            combined_string_tmp = f'<audio_id_{self.a_codebook_size + 3}>'
-            for j in range(lengths[i]):
-                combined_string_tmp = combined_string_tmp + ''.join(f'<audio_id_{int(audio_list[j])}>') + transcript_list[j]
-            combined_string_tmp += f'<audio_id_{self.a_codebook_size + 4}>'
-            combined_string.append(combined_string_tmp)
-
-        return combined_string
 
     def audio_token_to_string(self, audio_token: Tensor, lengths: List[int]):
         audio_string = []
@@ -462,7 +416,6 @@ class MLM(nn.Module):
                  f'<motion_id_{self.m_codebook_size + 1}>'))
         return motion_string
 
-
     def motion_string_to_compositional_token(self, motion_string: List[str]):
         face_tokens = []
         hand_tokens = []
@@ -471,9 +424,7 @@ class MLM(nn.Module):
         output_string = []
         for i in range(len(motion_string)):
             string = self.get_middle_str_emage(motion_string[i], '<motion_id_0>','<motion_id_1>')
-
-            # if string == '<motion_id_0><face_id_0><hand_id_0><lower_id_0><upper_id_0><motion_id_1>':
-            if string == '<motion_id_0><lower_id_0><upper_id_0><motion_id_1>':
+            if string == '<motion_id_0><upper_id_0><lower_id_0><motion_id_1>':
 
                 face_string = self.get_middle_str_emage_v2(motion_string[i], f'<face_id_{self.face_codebook_size}>',f'<face_id_{self.face_codebook_size+1}>')
                 hand_string = self.get_middle_str_emage_v2(motion_string[i], f'<hand_id_{self.hand_codebook_size}>',f'<hand_id_{self.hand_codebook_size+1}>')
@@ -501,7 +452,6 @@ class MLM(nn.Module):
 
             else:
                 string_list = string.split('><')
-
                 face_token_list = [
                     int(i.split('_')[-1].replace('>', '')) for i in string_list[1:-1] if
                     i.startswith('face') and i.split('_')[-1].replace('>', '').isdigit()
@@ -539,8 +489,7 @@ class MLM(nn.Module):
             lower_tokens.append(lower_token_list)
             upper_tokens.append(upper_token_list)
 
-            # if string == '<motion_id_0><face_id_0><hand_id_0><lower_id_0><upper_id_0><motion_id_1>':
-            if string == '<motion_id_0><lower_id_0><upper_id_0><motion_id_1>':
+            if string == '<motion_id_0><upper_id_0><lower_id_0><motion_id_1>':
                 output_string.append(motion_string[i].replace(face_string, '<Face_Placeholder>')
                                      .replace(hand_string, '<Hand_Placeholder>')
                                      .replace(upper_string, '<Upper_Placeholder>')
@@ -552,7 +501,7 @@ class MLM(nn.Module):
 
     def placeholder_fulfill(self, prompt: str, length: int, audio_length: int,
                                 face_string: str, hand_string: str, upper_string: str,lower_string: str, motion_string: str,
-                                audio_string: str, text: str, combine_strings: str, emotion_label: str):
+                                audio_string: str, text: str, emotion_label: str):
 
         seconds = math.floor(length / self.motion_framerate)
         motion_splited = motion_string.split('>')
@@ -631,7 +580,6 @@ class MLM(nn.Module):
             '<Lower_Placeholder>', lower_string).replace(
             '<Motion_Placeholder>', motion_string).replace(
             '<Audio_Placeholder>', audio_string).replace(
-            '<AudioTranscript_Placeholder>', combine_strings).replace(
             '<Frame_Placeholder>',f'{length}').replace(
             '<Second_Placeholder>', '%.1f' % seconds).replace(
             '<Face_Placeholder_s1>', face_predict_head).replace(
@@ -661,7 +609,6 @@ class MLM(nn.Module):
                          motion_string,
                          audio_strings,
                          texts,
-                         combine_strings,
                          emotion_label,
                          stage='test'):
         inputs = []
@@ -678,12 +625,12 @@ class MLM(nn.Module):
                 self.placeholder_fulfill(input_template, length, audio_length,
                                              face_strings[i], hand_strings[i],
                                              upper_strings[i], lower_strings[i], motion_string[i],
-                                             audio_strings[i], texts[i], combine_strings[i], emotion_label[i]))
+                                             audio_strings[i], texts[i], emotion_label[i]))
             outputs.append(
                 self.placeholder_fulfill(output_template, length, audio_length,
                                              face_strings[i], hand_strings[i],
                                              upper_strings[i], lower_strings[i], motion_string[i],
-                                             audio_strings[i], texts[i], combine_strings[i], emotion_label[i]))
+                                             audio_strings[i], texts[i], emotion_label[i]))
 
         return inputs, outputs
 
@@ -700,18 +647,11 @@ class MLM(nn.Module):
             startIndex:endIndex] + f'<motion_id_{self.m_codebook_size+1}>'
 
     def get_middle_str_emage(self, content, startStr, endStr):
-        # try:
-        #     startIndex = content.index(startStr)
-        #     if startIndex >= 0:
-        #         startIndex += len(startStr)
-        #     endIndex = content.index(endStr)
-        # except:
-        #     return '<motion_id_0><face_id_0><hand_id_0><lower_id_0><upper_id_0><motion_id_1>'
+
         try:
             startIndex = content.index(startStr)
         except:
-            # return '<motion_id_0><face_id_0><hand_id_0><lower_id_0><upper_id_0><motion_id_1>'
-            return '<motion_id_0><lower_id_0><upper_id_0><motion_id_1>'
+            return '<motion_id_0><upper_id_0><lower_id_0><motion_id_1>'
 
         if startIndex >= 0:
             startIndex += len(startStr)
@@ -726,8 +666,8 @@ class MLM(nn.Module):
         try:
             startIndex = content.index(startStr)
         except:
-            return startStr + '<face_id_0><hand_id_0><lower_id_0><upper_id_0>' + endStr
-
+            return startStr + '<face_id_0><hand_id_0><upper_id_0><lower_id_0>' + endStr
+        
         if startIndex >= 0:
             startIndex += len(startStr)
         try:

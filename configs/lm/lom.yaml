@@ -1,17 +1,17 @@
 target: lom.archs.lom.MLM
 params:
   model_type: t5
-  model_path: ./models/flan-t5-base
+  model_path: ./model_files/t5_models/flan-t5-base
   stage: ${TRAIN.STAGE}
   motion_codebook_size: ${model.params.motion_codebook_size}
   audio_codebook_size: ${model.params.audio_codebook_size}
-  flash_attention: False   ## True on paper
+  flash_attention: True   ## True on paper
   ablation: ${ABLATION}
   max_length: 512
-  motion_down_sampling: 1
-  audio_down_sampling: 320
-  motion_framerate: 30.0
-  audio_samplerate: 16000.0
+  motion_down_sampling: ${DATASET.unit_length}
+  audio_down_sampling: ${DATASET.audio_down}
+  motion_framerate: ${DATASET.pose_fps}
+  audio_samplerate: ${DATASET.audio_fps}
   modalities:
     motion:
       codebook_size: 0

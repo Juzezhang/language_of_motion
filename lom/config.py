@@ -121,21 +121,31 @@ def parse_args(phase="train"):
 
 
     if phase == "demo":
+        group.add_argument("--audio",
+            type=str,
+            required=False,
+            help="audio file")
+        group.add_argument(
+            "--text",
+            type=str,
+            required=False,
+            help="input text and lengths with txt format",
+        )
         group.add_argument("--task",
             type=str,
             required=False,
             help="evaluation task type")
         group.add_argument(
-            "--example",
-            type=str,
-            required=False,
-            help="input text and lengths with txt format",
-        )
-        group.add_argument(
             "--out_dir",
             type=str,
             required=False,
             help="output dir",
+        )
+        group.add_argument(
+            "--render",
+            action="store_true",
+            required=False,
+            help="render",
         )
 
     if phase == "render":
@@ -165,7 +175,8 @@ def parse_args(phase="train"):
     params = parser.parse_args()
     
     # Load yaml config files
-    OmegaConf.register_new_resolver("eval", eval)
+    # OmegaConf.register_new_resolver("eval", eval)
+    OmegaConf.register_resolver("eval", eval)
     # OmegaConf.register_resolver("eval", eval)
     cfg_assets = OmegaConf.load(params.cfg_assets)
     cfg_base = OmegaConf.load(pjoin(cfg_assets.CONFIG_FOLDER, 'default.yaml'))
@@ -189,9 +200,11 @@ def parse_args(phase="train"):
             print("Force no debugging and one gpu when testing")
 
     if phase == "demo":
-        cfg.DEMO.EXAMPLE = params.example
+        cfg.DEMO.AUDIO = params.audio
+        cfg.DEMO.TEXT = params.text
         cfg.DEMO.TASK = params.task
         cfg.TEST.FOLDER = params.out_dir if params.out_dir else cfg.TEST.FOLDER
+        cfg.DEMO.RENDER = params.render
         os.makedirs(cfg.TEST.FOLDER, exist_ok=True)
 
     if phase == "render":

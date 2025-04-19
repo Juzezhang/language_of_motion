@@ -7,10 +7,10 @@ import numpy as np
 from torch.utils import data
 from rich.progress import track
 from os.path import join as pjoin
-import spacy
+# import spacy
 import pandas as pd
 import math
-from loguru import logger
+# from loguru import logger
 # from utils_emage import rotation_conversions as rc
 import torch
 import smplx
@@ -18,9 +18,9 @@ from .data_tools import joints_list
 import librosa
 import textgrid as tg
 from numpy.lib import stride_tricks
-import h5py
-import json
-import hashlib
+# import h5py
+# import json
+# import hashlib
 from lom.data.mixed_dataset.data_tools import (
     joints_list, 
     JOINT_MASK_FACE,
@@ -28,25 +28,16 @@ from lom.data.mixed_dataset.data_tools import (
     JOINT_MASK_HANDS,
     JOINT_MASK_LOWER,
     JOINT_MASK_FULL,
-    BEAT_SMPLX_JOINTS,
-    BEAT_SMPLX_FULL,
-    BEAT_SMPLX_FACE,
-    BEAT_SMPLX_UPPER,
-    BEAT_SMPLX_HANDS,
-    BEAT_SMPLX_LOWER
 )
 from tqdm import tqdm
 from lom.utils.rotation_conversions import axis_angle_to_6d, axis_angle_to_matrix, axis_angle_to_6d_np
 
 
-# Global SMPLX model cache
-_GLOBAL_SMPLX_MODEL = None
 
 class Audio2MotionDataset(data.Dataset):
 
     def __init__(
         self,
-        # data_root,
         split,
         smpl_path,
         args,
@@ -583,11 +574,6 @@ class Audio2MotionDataset(data.Dataset):
         return contacts
 
 
-
-
-
-
-
     def reset_max_len(self, length):
         assert length <= self.max_motion_length
         self.pointer = np.searchsorted(self.length_arr, length)
@@ -636,8 +622,6 @@ class Audio2MotionDataset(data.Dataset):
         # # Audio data
         raw_audio = data['raw_audio']  # Keep raw audio as numpy for compatibility
         audio_token = self._ensure_tensor(data['audio'])
-        # onset = self._ensure_tensor(data['onset'])
-        # amplitude_envelope = self._ensure_tensor(data['amplitude_envelope'])
         
         # Calculate lengths
         m_tokens_len = torch.tensor(face.shape[0])
@@ -656,8 +640,6 @@ class Audio2MotionDataset(data.Dataset):
             "tar_trans": tar_trans, 
             "tar_exps": tar_exps, 
             "audio_token": audio_token,
-            # 'onset': onset,
-            # 'amplitude_envelope': amplitude_envelope,
             "raw_audio": raw_audio, 
             "m_tokens_len": m_tokens_len, 
             "a_tokens_len": a_tokens_len, 

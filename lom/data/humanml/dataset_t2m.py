@@ -19,9 +19,9 @@ class Text2MotionDataset(data.Dataset):
         std,
         max_motion_length=196,
         min_motion_length=40,
-        unit_length=4,
+        unit_length=1,
         fps=20,
-        tmpFile=False,
+        tmpFile=True,
         tiny=False,
         debug=False,
         **kwargs,
@@ -68,101 +68,104 @@ class Text2MotionDataset(data.Dataset):
         data_dict = {}
 
         # Fast loading
-        if os.path.exists(pjoin(data_root, f'tmp/{split}{subset}_data.pkl')):
-            if tiny or debug:
-                with open(pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
-                          'rb') as file:
-                    data_dict = pickle.load(file)
-            else:
-                # with rich.progress.open(
-                #         pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
-                #         'rb',
-                #         description=f"Loading HumanML3D {split}") as file:
-                #     data_dict = pickle.load(file)
-                with open(pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
-                          'rb') as file:
-                    data_dict = pickle.load(file)
-            with open(pjoin(data_root, f'tmp/{split}{subset}_index.pkl'),
-                      'rb') as file:
-                name_list = pickle.load(file)
-            for name in new_name_list:
-                length_list.append(data_dict[name]['length'])
+        # if False:
+        # if os.path.exists(pjoin(data_root, f'tmp/{split}{subset}_data.pkl')):
+            # if tiny or debug:
+            #     with open(pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
+            #               'rb') as file:
+            #         data_dict = pickle.load(file)
+            # else:
+            #     # with rich.progress.open(
+            #     #         pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
+            #     #         'rb',
+            #     #         description=f"Loading HumanML3D {split}") as file:
+            #     #     data_dict = pickle.load(file)
+            #     with open(pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
+            #               'rb') as file:
+            #         data_dict = pickle.load(file)
+            # with open(pjoin(data_root, f'tmp/{split}{subset}_index.pkl'),
+            #           'rb') as file:
+            #     name_list = pickle.load(file)
+            # for name in new_name_list:
+            #     length_list.append(data_dict[name]['length'])
 
-        else:
-            for idx, name in enumerator:
-                if len(new_name_list) > maxdata:
-                    break
-                try:
-                    motion = np.load(pjoin(motion_dir, name + ".npy"))
-                    if (len(motion)) < self.min_motion_length or (len(motion) >= max_motion_length):
-                        continue
+        # else:
 
-                    # Read text
-                    text_data = []
-                    flag = False
-                    with cs.open(pjoin(text_dir, name + '.txt')) as f:
-                        lines = f.readlines()
-                        for line in lines:
-                            text_dict = {}
-                            line_split = line.strip().split('#')
-                            caption = line_split[0]
-                            t_tokens = line_split[1].split(' ')
-                            f_tag = float(line_split[2])
-                            to_tag = float(line_split[3])
-                            f_tag = 0.0 if np.isnan(f_tag) else f_tag
-                            to_tag = 0.0 if np.isnan(to_tag) else to_tag
 
-                            text_dict['caption'] = caption
-                            text_dict['tokens'] = t_tokens
-                            if f_tag == 0.0 and to_tag == 0.0:
-                                flag = True
-                                text_data.append(text_dict)
-                            else:
-                                motion_new = motion[int(f_tag *
-                                                        fps):int(to_tag * fps)]
-                                if (len(motion_new)
-                                    ) < self.min_motion_length or (
-                                        len(motion_new) >= max_motion_length):
-                                    continue
+        for idx, name in enumerator:
+            if len(new_name_list) > maxdata:
+                break
+            try:
+                motion = np.load(pjoin(motion_dir, name + ".npy"))
+                if (len(motion)) < self.min_motion_length or (len(motion) >= max_motion_length):
+                    continue
+
+                # Read text
+                text_data = []
+                flag = False
+                with cs.open(pjoin(text_dir, name + '.txt')) as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        text_dict = {}
+                        line_split = line.strip().split('#')
+                        caption = line_split[0]
+                        t_tokens = line_split[1].split(' ')
+                        f_tag = float(line_split[2])
+                        to_tag = float(line_split[3])
+                        f_tag = 0.0 if np.isnan(f_tag) else f_tag
+                        to_tag = 0.0 if np.isnan(to_tag) else to_tag
+
+                        text_dict['caption'] = caption
+                        text_dict['tokens'] = t_tokens
+                        if f_tag == 0.0 and to_tag == 0.0:
+                            flag = True
+                            text_data.append(text_dict)
+                        else:
+                            motion_new = motion[int(f_tag *
+                                                    fps):int(to_tag * fps)]
+                            if (len(motion_new)
+                                ) < self.min_motion_length or (
+                                    len(motion_new) >= max_motion_length):
+                                continue
+                            new_name = random.choice(
+                                'ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
+                            while new_name in new_name_list:
                                 new_name = random.choice(
                                     'ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                while new_name in new_name_list:
-                                    new_name = random.choice(
-                                        'ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                name_count = 1
-                                while new_name in data_dict:
-                                    new_name += '_' + name_count
-                                    name_count += 1
-                                data_dict[new_name] = {
-                                    'motion': motion_new,
-                                    "length": len(motion_new),
-                                    'text': [text_dict]
-                                }
-                                new_name_list.append(new_name)
-                                length_list.append(len(motion_new))
+                            name_count = 1
+                            while new_name in data_dict:
+                                new_name += '_' + name_count
+                                name_count += 1
+                            data_dict[new_name] = {
+                                'motion': motion_new,
+                                "length": len(motion_new),
+                                'text': [text_dict]
+                            }
+                            new_name_list.append(new_name)
+                            length_list.append(len(motion_new))
 
-                    if flag:
-                        data_dict[name] = {
-                            'motion': motion,
-                            "length": len(motion),
-                            'text': text_data
-                        }
-                        new_name_list.append(name)
-                        length_list.append(len(motion))
-                except:
-                    pass
+                if flag:
+                    data_dict[name] = {
+                        'motion': motion,
+                        "length": len(motion),
+                        'text': text_data
+                    }
+                    new_name_list.append(name)
+                    length_list.append(len(motion))
+            except:
+                pass
 
-            name_list, length_list = zip(
-                *sorted(zip(new_name_list, length_list), key=lambda x: x[1]))
+        name_list, length_list = zip(
+            *sorted(zip(new_name_list, length_list), key=lambda x: x[1]))
 
-            # if tmpFile:
-            #     os.makedirs(pjoin(data_root, 'tmp'), exist_ok=True)
-            #     with open(pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
-            #               'wb') as file:
-            #         pickle.dump(data_dict, file)
-            #     with open(pjoin(data_root, f'tmp/{split}{subset}_index.pkl'),
-            #               'wb') as file:
-            #         pickle.dump(name_list, file)
+        # if tmpFile:
+        #     os.makedirs(pjoin(data_root, 'tmp'), exist_ok=True)
+        #     with open(pjoin(data_root, f'tmp/{split}{subset}_data.pkl'),
+        #               'wb') as file:
+        #         pickle.dump(data_dict, file)
+        #     with open(pjoin(data_root, f'tmp/{split}{subset}_index.pkl'),
+        #               'wb') as file:
+        #         pickle.dump(name_list, file)
 
         self.length_arr = np.array(length_list)
         self.data_dict = data_dict

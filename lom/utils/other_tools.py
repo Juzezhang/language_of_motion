@@ -2,11 +2,11 @@ import os
 import numpy as np
 import random
 import torch
-import shutil
+# import shutil
 import csv
-import pprint
+# import pprint
 import pandas as pd
-from loguru import logger
+# from loguru import logger
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import pickle
@@ -694,13 +694,13 @@ def generate_images(frames, vertices_all, vertices1_all, faces, output_dir, file
 #     utils.media.add_audio_to_video(silent_video_file_path, audio_path, final_clip)
 #     os.remove(silent_video_file_path)
 
-def print_exp_info(args):
-    logger.info(pprint.pformat(vars(args)))
-    logger.info(f"# ------------ {args.name} ----------- #")
-    logger.info("PyTorch version: {}".format(torch.__version__))
-    logger.info("CUDA version: {}".format(torch.version.cuda))
-    logger.info("{} GPUs".format(torch.cuda.device_count()))
-    logger.info(f"Random Seed: {args.random_seed}")
+# def print_exp_info(args):
+#     logger.info(pprint.pformat(vars(args)))
+#     logger.info(f"# ------------ {args.name} ----------- #")
+#     logger.info("PyTorch version: {}".format(torch.__version__))
+#     logger.info("CUDA version: {}".format(torch.version.cuda))
+#     logger.info("{} GPUs".format(torch.cuda.device_count()))
+#     logger.info(f"Random Seed: {args.random_seed}")
 
 def args2csv(args, get_head=False, list4print=[]):
     for k, v in args.items():

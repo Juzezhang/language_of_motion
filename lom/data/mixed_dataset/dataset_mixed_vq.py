@@ -77,7 +77,7 @@ class MixedDatasetVQ(data.Dataset):
         """
         # Set max data size depending on debug mode
         if tiny or debug:
-            self.maxdata = 1e10
+            self.maxdata = 10
         else:
             # self.maxdata = 1e10
             self.maxdata = 1e10

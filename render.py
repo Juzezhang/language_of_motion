@@ -6,11 +6,11 @@ import natsort
 from pathlib import Path
 from argparse import ArgumentParser
 
+
 try:
     import bpy
 
     sys.path.append(os.path.dirname(bpy.data.filepath))
-
     # local packages
     sys.path.append(os.path.expanduser("~/.local/lib/python3.9/site-packages"))
 except ImportError:
@@ -74,8 +74,6 @@ def render_cli() -> None:
     init = True
     for path in paths:
 
-        # if path.split('/')[-1][:2] in ['1_','2_','3_','4_','5_','6_','7_','9_','10','11','12','13','15','16','17','18','20','22','23','24','25','27','28']:
-        #     continue
         # check existed mp4 or under rendering
         if cfg.RENDER.MODE == "video":
             if os.path.exists(path.replace(".npy", ".mp4")) or os.path.exists(

@@ -133,7 +133,7 @@ class VQVAEConv(nn.Module):
 class VQVAESKConv(VQVAEConv):
     def __init__(self, args):
         super(VQVAESKConv, self).__init__(args)
-        smpl_fname = args.data_path_1+'smplx_models/smplx/SMPLX_NEUTRAL_2020.npz'
+        smpl_fname = args.data_path_1+'smplx_models/SMPLX_NEUTRAL_2020.npz'
         smpl_data = np.load(smpl_fname, encoding='latin1')
         parents = smpl_data['kintree_table'][0].astype(np.int32)
         edges = build_edge_topology(parents)

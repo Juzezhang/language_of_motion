@@ -1,9 +1,7 @@
-# motiongpt
 numpy==1.23.1
-tensorboard
 pytorch_lightning
 torchmetrics
-omegaconf
+omegaconf==2.1.0
 shortuuid
 chumpy
 transformers==4.42.4
@@ -12,8 +10,25 @@ einops
 wandb
 rich
 matplotlib
+scipy
+pandas
+peakutils
+ptflops
+python_igraph
+pyvirtualdisplay
+PyYAML
+replicate
+soundfile
+termcolor
+textgrid
+tqdm
+pyglet
+bert_score
+jiwer
+ConfigArgParse
+opencv_python
 
-# for visualization
+# Visualization dependencies
 smplx==0.1.28
 trimesh
 joblib==1.2.0
@@ -27,44 +42,8 @@ pyrender
 moviepy
 librosa
 triangle
-
-# EMAGE
-ConfigArgParse
+IPython
+gdown
 fasttext
-h5py
-imageio
-ipython
-librosa
-lmdb
-loguru
-matplotlib
-moviepy
-gradio
-fasttext-wheel
-opencv_contrib_python
-opencv_python
-pandas
-peakutils
-ptflops
-python_igraph
-pyvirtualdisplay
-PyYAML
-replicate
-scikit_learn
-scipy
-soundfile
-termcolor
-textgrid
-tqdm
-trimesh
-wandb
-pyglet
-smplx
-tensorboard
-#pyrender
-bert_score
-jiwer
-
-
-
-turbot5
+# Specific version requirements
+pip==21.3
