@@ -51,6 +51,7 @@ pip install turbot5 -U
 python -m spacy download en_core_web_sm
 
 # Set up fairseq (required for some components)
+mkdir third_party
 cd third_party
 git clone https://github.com/pytorch/fairseq
 cd fairseq
