@@ -36,13 +36,17 @@ We use Conda for environment management. Follow these steps to set up the develo
 
 ```bash
 # Create and activate the conda environment
-conda create --name lom_release -y python=3.10
-conda activate lom_release
+conda create --name lom -y python=3.10
+conda activate lom
 
 # Install PyTorch with CUDA support
 conda install pytorch==2.4.0 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+# if you are using 5090 please use following command
+# pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 
 
+
+python -m pip install pip==21.3
 # Install dependencies
 pip install -r requirements.txt
 
@@ -51,7 +55,7 @@ pip install turbot5 -U
 python -m spacy download en_core_web_sm
 
 # Set up fairseq (required for some components)
-mkdir third_party
+mkdir -p third_party
 cd third_party
 git clone https://github.com/pytorch/fairseq
 cd fairseq
@@ -78,7 +82,7 @@ tar -xf ./third_party/blender-2.93.18-linux-x64.tar.xz -C ./third_party/
 ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user moviepy
 ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user shortuuid
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages natsort
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install -r model_files/requirements_render.txt
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install -r preprocess/requirements_render.txt
 
 ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install moviepy
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages moviepy
