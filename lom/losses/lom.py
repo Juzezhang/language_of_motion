@@ -22,7 +22,7 @@ class GPTLosses(BaseLosses):
     Handles various loss components like reconstruction, commitment, and language modeling.
     """
 
-    def __init__(self, cfg, stage, num_joints, **kwargs):
+    def __init__(self, cfg, stage, **kwargs):
         # Save the current training stage
         self.stage = stage
         recons_loss = cfg.LOSS.ABLATION.RECONS_LOSS
@@ -94,7 +94,7 @@ class GPTLosses(BaseLosses):
                 raise NotImplementedError(f"Loss {loss} not implemented.")
 
         # Initialize the base class with configured losses and parameters
-        super().__init__(cfg, losses, params, losses_func, num_joints,
+        super().__init__(cfg, losses, params, losses_func,
                          **kwargs)
 
     def update(self, rs_set):

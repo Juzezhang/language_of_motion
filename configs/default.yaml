@@ -84,6 +84,11 @@ METRIC:
   DIVERSITY_TIMES: 300 # Number of times to repeat the diversity test
   TM2T: ${evaluator.tm2t}
 
+
+
+
+
+
 DATASET:
   target: lom.data.HumanML3D.HumanML3DDataModule
   CODE_PATH: 'VQVAE'

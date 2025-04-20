@@ -55,8 +55,15 @@ TRAIN:
 TEST:
 #  CHECKPOINTS: checkpoints/MotionGPT-base/motiongpt_s3_h3d.tar
   CHECKPOINTS: '/simurgh/u/juze/code/language_of_motion/experiments/lom/Instruct_Mixed_WO_Pretrain/checkpoints/last.ckpt'
+  TEST_LENGTH: 120
   SPLIT: test
   BATCH_SIZE: 1 # training Batch size
+
+
+
+METRIC:
+  TYPE: ['']
+
 
 model:
   target: lom.models.lom.Language_Motion
@@ -66,10 +73,10 @@ model:
     lm: ${lm.lom}
     modality_setup:
       params:
-        audio_fps: ${DATASET.audio_fps}
-        audio_down: ${DATASET.audio_down}  ## since the hubert model is trained on 320hz audio, and we found also have another version of hubert model trained on 640 downsampling setup
-        motion_fps: ${DATASET.pose_fps}
-        motion_down: ${DATASET.unit_length}
+        audio_fps: ${lm.lom.params.audio_samplerate}
+        audio_down: ${lm.lom.params.audio_down_sampling}  ## since the hubert model is trained on 320hz audio, and we found also have another version of hubert model trained on 640 downsampling setup
+        motion_fps: ${lm.lom.params.motion_framerate}
+        motion_down: ${lm.lom.params.motion_down_sampling}
     modality_tokenizer:
       vae_face:
         target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion

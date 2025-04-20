@@ -3,11 +3,10 @@ import torch.nn as nn
 
 
 class BaseLosses(nn.Module):
-    def __init__(self, cfg, losses, params, losses_func, num_joints, **kwargs):
+    def __init__(self, cfg, losses, params, losses_func, **kwargs):
         super().__init__()
 
         # Save parameters
-        self.num_joints = num_joints
         self._params = params
 
         # Add total indicator

@@ -13,7 +13,7 @@ RENDER:
   # RES: 'high'
   RES: 'med'
   DOWNSAMPLE: False
-  FPS: 20.0
+  FPS: 30.0
   CANONICALIZE: True
   EXACT_FRAME: 0.5
   NUM: 8

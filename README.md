@@ -76,15 +76,14 @@ tar -xf ./third_party/blender-2.93.18-linux-x64.tar.xz -C ./third_party/
 
 ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m ensurepip --upgrade
 ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --upgrade pip
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user numpy
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user matplotlib
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user hydra-core --upgrade
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user moviepy
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --user shortuuid
-# ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages natsort
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install -r preprocess/requirements_render.txt
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install numpy --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install matplotlib --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install hydra-core --upgrade --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install moviepy==1.0.3 --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install shortuuid --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages
+./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install -r preprocess/requirements_render.txt --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages
 
-./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install moviepy
+# ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install moviepy
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages moviepy
 
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install omegaconf==2.1.0

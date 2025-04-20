@@ -237,6 +237,9 @@ def main():
     audio_path = cfg.DEMO.AUDIO
     text = cfg.DEMO.TEXT
     render = cfg.DEMO.RENDER
+    motion_fps = cfg.model.params.modality_setup.params.motion_fps
+    audio_fps = cfg.model.params.modality_setup.params.audio_fps
+
     output_dir = Path(
         os.path.join(cfg.FOLDER, str(cfg.model.target.split('.')[-2]), str(cfg.NAME),
                      "samples_" + cfg.TIME))
@@ -260,7 +263,8 @@ def main():
 
     # create model
     total_time = time.time()
-    model = build_model(cfg, datamodule)
+    # model = build_model(cfg, datamodule)
+    model = build_model(cfg)
     logger.info("model {} loaded".format(cfg.model.target))
 
     # loading state dict
@@ -294,7 +298,7 @@ def main():
         audio_token_fps = cfg.DATASET.audio_fps / cfg.DATASET.audio_down
         motion_token_fps = cfg.DATASET.pose_fps / cfg.DATASET.unit_length
 
-        audio_short_length = int(cfg.DATASET.test_length * audio_token_fps / motion_token_fps)        
+        audio_short_length = int(cfg.TEST.TEST_LENGTH * audio_token_fps / motion_token_fps)        
         num_subdivision = math.floor(audio_token_length / audio_short_length) + 1
 
         # Initialize containers for token indices
@@ -330,7 +334,7 @@ def main():
             # Unify tensor lengths
             feats_face, feats_hand, feats_lower, feats_upper = unify_length(
                 outputs_face, outputs_hand, outputs_lower, outputs_upper, 
-                cfg.DATASET.test_length)
+                cfg.TEST.TEST_LENGTH)    
 
             # Stack tensors
             feats_face = torch.stack(feats_face, dim=0)
@@ -383,7 +387,7 @@ def main():
         # Unify tensor lengths
         feats_face, feats_hand, feats_lower, feats_upper = unify_length(
             outputs_face, outputs_hand, outputs_lower, outputs_upper, 
-            cfg.DATASET.test_length)
+            min(outputs_face[0].shape[0], outputs_hand[0].shape[0], outputs_lower[0].shape[0], outputs_upper[0].shape[0]))
 
         # Stack tensors
         feats_face = torch.stack(feats_face, dim=0)
@@ -463,8 +467,8 @@ def main():
 
     # Calculate translation from velocities
     rec_trans_v_s = rec_global["rec_pose"][:, :, 54:57]
-    rec_x_trans = velocity2position(rec_trans_v_s[:, :, 0:1], 1 / cfg.DATASET.pose_fps, torch.zeros(rec_trans_v_s[:, 0, 0:1].shape, device=device))
-    rec_z_trans = velocity2position(rec_trans_v_s[:, :, 2:3], 1 / cfg.DATASET.pose_fps, torch.zeros(rec_trans_v_s[:, 0, 2:3].shape, device=device))
+    rec_x_trans = velocity2position(rec_trans_v_s[:, :, 0:1], 1 / motion_fps, torch.zeros(rec_trans_v_s[:, 0, 0:1].shape, device=device))
+    rec_z_trans = velocity2position(rec_trans_v_s[:, :, 2:3], 1 / motion_fps, torch.zeros(rec_trans_v_s[:, 0, 2:3].shape, device=device))
     rec_y_trans = rec_trans_v_s[:, :, 1:2]
     rec_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
     

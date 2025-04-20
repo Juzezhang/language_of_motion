@@ -51,7 +51,7 @@ model:
 
 RENDER:
   BLENDER_PATH: ./third_party/blender-2.93.18-linux-x64/blender
-  SMPL_MODEL_PATH: model_files/smplx_models/smplx
+  SMPL_MODEL_PATH: model_files/smplx_models
   SMPLX2020_MODEL_PATH: model_files/smplx_models/
-  MODEL_PATH: model_files/smplx_models/smplx
-  FACES_PATH: model_files/smplh/smplh.faces
+  MODEL_PATH: model_files/smplx_models
+  FACES_PATH: model_files/smplx_models/smplx/smplh.faces

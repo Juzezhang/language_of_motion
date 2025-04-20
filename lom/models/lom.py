@@ -46,7 +46,7 @@ class Language_Motion(BaseModel):
 
     def __init__(self,
                  cfg,
-                 datamodule,
+                #  datamodule,
                  lm,
                  modality_setup,
                  modality_tokenizer,
@@ -55,11 +55,10 @@ class Language_Motion(BaseModel):
                  metrics_dict=['CoSpeechMetrics'],
                  **kwargs):
 
-        self.save_hyperparameters(ignore='datamodule', logger=False)
-        self.datamodule = datamodule
+        # self.save_hyperparameters(ignore='datamodule', logger=False)
+        # self.datamodule = datamodule
         super().__init__()
-        self.args = cfg.DATASET
-        self.vary_length = cfg.DATASET.vary_length
+        # self.args = cfg.DATASET
         self.vq_setting = cfg.vq
         self.audio_fps = modality_setup['params']['audio_fps']
         self.audio_down = modality_setup['params']['audio_down']
@@ -67,7 +66,7 @@ class Language_Motion(BaseModel):
         self.motion_down = modality_setup['params']['motion_down']
 
 
-        self.smplx = smplx.create(self.args.SMPL_PATH,
+        self.smplx = smplx.create(cfg.DATASET.SMPL_PATH,
             model_type='smplx',
             gender='NEUTRAL_2020',
             use_face_contour=False,
@@ -83,46 +82,49 @@ class Language_Motion(BaseModel):
 
         # Instantiate motion-language model
         self.lm = instantiate_from_config(lm)
-        # Freeze the motion tokenizer for lm training
-        if 'lm' in self.hparams.stage:
-            self.vae_face.training = False
-            for p in self.vae_face.parameters():
-                p.requires_grad = False
-            self.vae_upper.training = False
-            for p in self.vae_upper.parameters():
-                p.requires_grad = False
-            self.vae_hand.training = False
-            for p in self.vae_hand.parameters():
-                p.requires_grad = False
-            self.vae_lower.training = False
-            for p in self.vae_lower.parameters():
-                p.requires_grad = False
-            self.vae_global.training = False
-            for p in self.vae_global.parameters():
-                p.requires_grad = False
+        # Get stage from lm config instead of hparams
+        stage = getattr(self.lm, 'stage', None)
+        if stage is not None:
+            # Freeze the motion tokenizer for lm training
+            if 'lm' in stage:
+                self.vae_face.training = False
+                for p in self.vae_face.parameters():
+                    p.requires_grad = False
+                self.vae_upper.training = False
+                for p in self.vae_upper.parameters():
+                    p.requires_grad = False
+                self.vae_hand.training = False
+                for p in self.vae_hand.parameters():
+                    p.requires_grad = False
+                self.vae_lower.training = False
+                for p in self.vae_lower.parameters():
+                    p.requires_grad = False
+                self.vae_global.training = False
+                for p in self.vae_global.parameters():
+                    p.requires_grad = False
 
-        if 'vae' in self.hparams.stage or 'vq' in self.hparams.stage:
-            self.upper_loss = get_loss_func("UpperLoss")
-            self.lower_loss = get_loss_func("LowerLoss")
-            self.global_loss = get_loss_func("GlobalLoss")
-            self.face_loss = get_loss_func("FaceLoss")
-            self.hand_loss = get_loss_func("HandLoss")
-            # Instantiate the losses
+            if 'vae' in stage or 'vq' in stage:
+                self.upper_loss = get_loss_func("UpperLoss")
+                self.lower_loss = get_loss_func("LowerLoss")
+                self.global_loss = get_loss_func("GlobalLoss")
+                self.face_loss = get_loss_func("FaceLoss")
+                self.hand_loss = get_loss_func("HandLoss")
+                # Instantiate the losses
 
-        # Instantiate the losses
-        self._losses = torch.nn.ModuleDict({
-            split: GPTLosses(cfg, self.hparams.stage, self.datamodule.njoints)
-            for split in ["losses_train", "losses_test", "losses_val"]
-        })
+            config_losses = getattr(self.lm, 'losses', None)
 
-        # Data transform
-        self.feats2joints = datamodule.feats2joints
-        if hasattr(datamodule, 'feats2joints_exp'):
-            self.feats2joints_exp = datamodule.feats2joints_exp
+            if config_losses is not None:
+                # Instantiate the losses
+                self._losses = torch.nn.ModuleDict({
+                    split: GPTLosses(cfg, stage)
+                    for split in ["losses_train", "losses_test", "losses_val"]
+                })
 
-        # Count codebook frequency
-        self.codePred = []
-        self.codeFrequency = torch.zeros((self.hparams.motion_codebook_size, ))
+        # # Data transform
+        # self.feats2joints = datamodule.feats2joints
+        # if hasattr(datamodule, 'feats2joints_exp'):
+        #     self.feats2joints_exp = datamodule.feats2joints_exp
+
 
     def inverse_selection_tensor(self, filtered_t, selection_array, n):
         selection_array = torch.from_numpy(selection_array).to(filtered_t.device)

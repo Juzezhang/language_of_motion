@@ -8,10 +8,10 @@ params:
   flash_attention: True   ## True on paper
   ablation: ${ABLATION}
   max_length: 512
-  motion_down_sampling: ${DATASET.unit_length}
-  audio_down_sampling: ${DATASET.audio_down}
-  motion_framerate: ${DATASET.pose_fps}
-  audio_samplerate: ${DATASET.audio_fps}
+  motion_down_sampling: 4
+  audio_down_sampling: 320
+  motion_framerate: 30
+  audio_samplerate: 16000
   modalities:
     motion:
       codebook_size: 0

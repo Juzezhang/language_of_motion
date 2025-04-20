@@ -16,7 +16,8 @@ class BaseModel(LightningModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.configure_metrics()
+
+        # self.configure_metrics()
  
         # Ablation
         self.test_step_outputs = []
@@ -72,8 +73,15 @@ class BaseModel(LightningModule):
     def preprocess_state_dict(self, state_dict):
         new_state_dict = OrderedDict()
         
-        metric_state_dict = self.metrics.state_dict()
-        loss_state_dict = self._losses.state_dict()
+        if hasattr(self, 'metrics') and self.metrics is not None:
+            metric_state_dict = self.metrics.state_dict()
+        else:
+            metric_state_dict = {}
+
+        if hasattr(self, '_losses') and self._losses is not None:
+            loss_state_dict = self._losses.state_dict()
+        else:
+            loss_state_dict = {}
 
         for k, v in metric_state_dict.items():
             new_state_dict['metrics.' + k] = v
@@ -141,7 +149,8 @@ class BaseModel(LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
 
     def configure_metrics(self):
-        self.metrics = BaseMetrics(datamodule=self.datamodule, **self.hparams)
+        # self.metrics = BaseMetrics(datamodule=self.datamodule, **self.hparams)
+        self.metrics = BaseMetrics(cfg=self.hparams.cfg)
 
     def save_npy(self, outputs):
         cfg = self.hparams.cfg

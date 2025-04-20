@@ -6,7 +6,6 @@ Author: Biao Jiang and Xin Chen
 Modified by: Juze Zhang
 License: Check the original repository for licensing details.
 """
-import os
 from typing import List, Union, Dict, Any
 import numpy as np
 import math
