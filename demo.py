@@ -270,7 +270,7 @@ def main():
     # loading state dict
     if cfg.TEST.CHECKPOINTS:
         logger.info("Loading checkpoints from {}".format(cfg.TEST.CHECKPOINTS))
-        state_dict = torch.load(cfg.TEST.CHECKPOINTS, weights_only=False
+        state_dict = torch.load(cfg.TEST.CHECKPOINTS, weights_only=False,
                                 map_location="cpu")["state_dict"]
         model.load_state_dict(state_dict)
     else:
