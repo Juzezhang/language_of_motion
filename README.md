@@ -85,7 +85,6 @@ tar -xf ./third_party/blender-2.93.18-linux-x64.tar.xz -C ./third_party/
 
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install moviepy
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install --target=./third_party/blender-2.93.18-linux-x64/2.93/python/lib/python3.9/site-packages moviepy
-
 # ./third_party/blender-2.93.18-linux-x64/2.93/python/bin/python3.9 -m pip install omegaconf==2.1.0
 
 

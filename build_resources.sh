@@ -82,6 +82,7 @@ echo "Models are available in: model_files/hubert_models/"
 
 echo -e "\nDownloading FLAN-T5 model..."
 echo "Setting up Git LFS and cloning the model repository..."
+sudo apt install git-lfs # if you don't have it already
 git lfs install
 cd model_files/t5_models
 git clone https://huggingface.co/google/flan-t5-base
