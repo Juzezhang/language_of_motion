@@ -31,6 +31,7 @@ from lom.data.mixed_dataset.data_tools import (
 )
 import smplx
 import subprocess
+from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae, load_pretrained_lm
 
 def audio_token_to_string(audio_token: Tensor):
     audio_token = audio_token.cpu() if audio_token.device.type == 'cuda' else audio_token
@@ -173,7 +174,7 @@ def load_audio_input_tokenize(audio_path, task, hubert_checkpoint, hubert_quanti
     }
     return return_dict
 
-def convert_smplx_to_obj(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path):
+def convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path):
 
     smplx_model = smplx.create(smplx_path,
         model_type='smplx',
@@ -203,6 +204,7 @@ def convert_smplx_to_obj(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path
         reye_pose=rec_pose[:, 72:75],
         )
     vertex_saved = vertices_rec.vertices.cpu().numpy()
+    vertex_saved[:,:,1] *= -1
     np.save(mesh_save_path, vertex_saved)
     mesh_dir = os.path.dirname(mesh_save_path)
     cmd = [
@@ -214,7 +216,7 @@ def convert_smplx_to_obj(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path
         "--dir=" + mesh_dir,
         "--mode=video"
     ]
-    # 执行命令并捕获输出
+    # Execute command and capture output
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
@@ -256,10 +258,6 @@ def main():
             str(x) for x in cfg.DEVICE)
         device = torch.device("cuda")
 
-    # # Dataset
-    # datamodule = build_data(cfg)
-    # logger.info("datasets module {} initialized".format("".join(
-    #     cfg.DATASET.target.split('.')[-2])))
 
     # create model
     total_time = time.time()
@@ -270,9 +268,8 @@ def main():
     # loading state dict
     if cfg.TEST.CHECKPOINTS:
         logger.info("Loading checkpoints from {}".format(cfg.TEST.CHECKPOINTS))
-        state_dict = torch.load(cfg.TEST.CHECKPOINTS, weights_only=False,
-                                map_location="cpu")["state_dict"]
-        model.load_state_dict(state_dict)
+        load_pretrained_vae(cfg, model, logger, phase="demo")
+        load_pretrained_lm(cfg, model, logger, phase="demo")
     else:
         logger.warning(
             "No checkpoints provided, using random initialized model")
@@ -501,16 +498,11 @@ def main():
                     mocap_frame_rate=30,
                 )
         
-
-
     if render:
         smplx_path = cfg.RENDER.SMPLX2020_MODEL_PATH
         mesh_save_name = save_name.replace('.npz', '.npy')
         mesh_save_path = os.path.join(output_dir, mesh_save_name)
-        convert_smplx_to_obj(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path)
-
-
-    # '/root/blender-2.93.18-linux-x64/blender'
+        convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path)
 
 
     logger.info('Model forward finished! Start saving results...')

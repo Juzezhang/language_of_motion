@@ -90,11 +90,10 @@ def load_pretrained_without_vae(cfg, model, logger=None, phase="train"):
 
 def load_pretrained_vae(cfg, model, logger, phase="train"):
     # Load pretrained VAE model
-    if phase == "train" or phase == "token":
+    if phase == "train" or phase == "token" or phase == "demo":
         checkpoint_path= cfg.TRAIN.PRETRAINED_VQ
     elif phase == "test":
         checkpoint_path = cfg.TEST.CHECKPOINTS
-    
     # Load full checkpoint and extract only the state_dict
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     state_dict = checkpoint['state_dict']  # Get only the state_dict
@@ -137,6 +136,33 @@ def load_pretrained_vae(cfg, model, logger, phase="train"):
     model.vae_hand.load_state_dict(state_dict_hand, strict=True)
     model.vae_global.load_state_dict(state_dict_global, strict=True)
     logger.info(f"Loaded pretrained VAE model from {checkpoint_path}")
+
+    return model
+
+
+def load_pretrained_lm(cfg, model, logger, phase="train"):
+    # Load pretrained VAE model
+    if phase == "train" or phase == "token":
+        checkpoint_path= cfg.TRAIN.PRETRAINED_VQ
+    elif phase == "test":
+        checkpoint_path = cfg.TEST.CHECKPOINTS
+    elif phase == "demo":
+        checkpoint_path = cfg.TEST.CHECKPOINTS
+
+    # Load full checkpoint and extract only the state_dict
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    state_dict = checkpoint['state_dict']  # Get only the state_dict
+    
+    # Create new state dict with modified keys
+    state_dict_lm = {}
+    for key, value in state_dict.items():
+        if 'lm.language_model' in key:
+            new_key = key.replace('lm.language_model.', '')
+            state_dict_lm[new_key] = value
+    
+    # Save only the modified state_dict
+    model.lm.language_model.load_state_dict(state_dict_lm, strict=True)
+    logger.info(f"Loaded pretrained LM model from {checkpoint_path}")
 
     return model
 

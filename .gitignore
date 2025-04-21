@@ -1,5 +1,6 @@
 .idea/
 .vscode/
+.gitignore
 model_files/
 model_files_bk/
 results/

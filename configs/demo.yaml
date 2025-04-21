@@ -53,12 +53,10 @@ TRAIN:
       weight_decay: 0.0
 
 TEST:
-#  CHECKPOINTS: checkpoints/MotionGPT-base/motiongpt_s3_h3d.tar
-  CHECKPOINTS: './model_files/pretrained_cpt/lom_t2m/epoch=619.ckpt'
+  CHECKPOINTS: './model_files/pretrained_cpt/lom_t2m/Instruct_Mixed_T2M_LM.ckpt'
   TEST_LENGTH: 120
   SPLIT: test
   BATCH_SIZE: 1 # training Batch size
-
 
 
 METRIC:
@@ -68,13 +66,12 @@ METRIC:
 model:
   target: lom.models.lom.Language_Motion
   params:
-    # condition: 'audio'
     task: 'a2m'
     lm: ${lm.lom}
     modality_setup:
       params:
         audio_fps: ${lm.lom.params.audio_samplerate}
-        audio_down: ${lm.lom.params.audio_down_sampling}  ## since the hubert model is trained on 320hz audio, and we found also have another version of hubert model trained on 640 downsampling setup
+        audio_down: ${lm.lom.params.audio_down_sampling}  ## the hubert model is trained on 320hz audio
         motion_fps: ${lm.lom.params.motion_framerate}
         motion_down: ${lm.lom.params.motion_down_sampling}
     modality_tokenizer:
