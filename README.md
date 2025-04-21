@@ -155,8 +155,8 @@ If you find our work useful for your research, please consider citing:
 @article{chen2024language,
   title={The Language of Motion: Unifying Verbal and Non-verbal Language of 3D Human Motion},
   author={Chen, Changan and Zhang, Juze and Lakshmikanth, Shrinidhi K and Fang, Yusu and Shao, Ruizhi and Wetzstein, Gordon and Fei-Fei, Li and Adeli, Ehsan},
-  journal={arXiv preprint arXiv:2412.10523},
-  year={2024}
+  journal={CVPR},
+  year={2025}
 }
 ```
 
