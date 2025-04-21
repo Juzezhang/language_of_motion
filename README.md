@@ -138,7 +138,7 @@ Our comprehensive training documentation is coming soon! We'll provide detailed 
 
 Stay tuned for updates on our training procedures and best practices.
 
-## Evaluation Pipeline
+## Evaluation
 
 Evaluation metrics and benchmarking result are currently being prepared. Soon, we'll provide:
 - Standardized evaluation scripts for all supported tasks
