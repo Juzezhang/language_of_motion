@@ -15,7 +15,7 @@ Language of Motion (LoM) is a framework that models human motion generation as a
 
 - [x] Initial code release
 - [x] Inference code for text-to-motion
-- [ ] Inference code for co-speech gesture generation
+- [x] Inference code for co-speech gesture generation
 - [ ] Tokenizer training code
 - [ ] AMASS and LibriSpeech preprocessing code
 - [ ] Evaluation Benchmark results
@@ -105,7 +105,11 @@ Pretrained models are gradually uploading! Visit the [Hugging Face](https://hugg
 
 ### Text-to-Motion Generation
 ```bash
-python demo.py --cfg configs/demo.yaml --text examples/t2m.txt --task t2m --render
+python demo.py --cfg configs/demo_text2motion.yaml --text examples/text2motion.txt --task text2motion --render
+```
+### Co-speech Gesture Generation
+```bash
+python demo.py --cfg configs/demo_cospeech.yaml --audio examples/2_scott_0_111_111.wav --task cospeech --render
 ```
 
 ## 🗃️ Data Preparation

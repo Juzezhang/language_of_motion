@@ -1,4 +1,4 @@
-NAME: DEMO # Experiment names
+NAME: DEMO_COSPEECH # Experiment names
 ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
 NUM_NODES: 1 # Number of GPU nodes for distributed training
 DEVICE: [0] # Index of gpus eg. [0] or [0,1,2,3,4,5,6,7]
@@ -29,7 +29,7 @@ Representation_type:
     lower:
       ori: beat_smplx_joints
       tar: beat_smplx_lower
-      vae_test_dim: 54
+      vae_test_dim: 61
 
 TRAIN:
   #---------------------------------
@@ -42,7 +42,7 @@ TRAIN:
   FORCE_BF16: False
   RESUME: '' # Resume training from this path
   PRETRAINED: '' # Preatrained model path
-  PRETRAINED_VQ: './model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt' # Preatrained vq model path
+  PRETRAINED_VQ: './model_files/pretrained_cpt/emage_vq/vq_emage_speaker_2.ckpt' # Preatrained vq model path
   HUBERT_CHECKPOINT: './model_files/hubert_models/hubert_base_ls960.pt'
   HUBERT_QUANTIZER: './model_files/hubert_models/hubert_base_ls960_L9_km500.bin'
   OPTIM:
@@ -53,7 +53,7 @@ TRAIN:
       weight_decay: 0.0
 
 TEST:
-  CHECKPOINTS: './model_files/pretrained_cpt/lom_t2m/Instruct_Mixed_T2M_LM.ckpt'
+  CHECKPOINTS: './model_files/pretrained_cpt/lom_a2m/Instruct_Mixed_A2M_LM.ckpt'
   TEST_LENGTH: 120
   SPLIT: test
   BATCH_SIZE: 1 # training Batch size
@@ -62,47 +62,46 @@ TEST:
 METRIC:
   TYPE: ['']
 
-
 model:
   target: lom.models.lom.Language_Motion
   params:
     task: 'a2m'
-    lm: ${lm.lom}
+    lm: ${lm.lom_speaker2}
     modality_setup:
       params:
-        audio_fps: ${lm.lom.params.audio_samplerate}
-        audio_down: ${lm.lom.params.audio_down_sampling}  ## the hubert model is trained on 320hz audio
-        motion_fps: ${lm.lom.params.motion_framerate}
-        motion_down: ${lm.lom.params.motion_down_sampling}
+        audio_fps: ${lm.lom_speaker2.params.audio_samplerate}
+        audio_down: ${lm.lom_speaker2.params.audio_down_sampling}  ## the hubert model is trained on 320hz audio
+        motion_fps: ${lm.lom_speaker2.params.motion_framerate}
+        motion_down: ${lm.lom_speaker2.params.motion_down_sampling}
     modality_tokenizer:
       vae_face:
-        target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
+        target: lom.archs.lom_vq.VQVAEConvZero
         params:
-          vae_layer: 3
+          vae_layer: 2
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_type}.face.vae_test_dim}  #dynamic
       vae_hand:
-        target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
+        target: lom.archs.lom_vq.VQVAEConvZero
         params:
-          vae_layer: 3
+          vae_layer: 2
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_type}.hand.vae_test_dim}  #dynamic
       vae_upper:
-        target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
+        target: lom.archs.lom_vq.VQVAEConvZero
         params:
-          vae_layer: 3
+          vae_layer: 2
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_type}.upper.vae_test_dim}  #dynamic
       vae_lower:
-        target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
+        target: lom.archs.lom_vq.VQVAEConvZero
         params:
-          vae_layer: 3
+          vae_layer: 4
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1

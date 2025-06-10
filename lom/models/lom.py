@@ -64,7 +64,7 @@ class Language_Motion(BaseModel):
         self.audio_down = modality_setup['params']['audio_down']
         self.motion_fps = modality_setup['params']['motion_fps']
         self.motion_down = modality_setup['params']['motion_down']
-
+        self.test_length = cfg.TEST.TEST_LENGTH
 
         self.smplx = smplx.create(cfg.DATASET.SMPL_PATH,
             model_type='smplx',
@@ -199,7 +199,7 @@ class Language_Motion(BaseModel):
             audio_token_string = batch["audio"]
             audio_token_string = [f"Based on {audio}, generate a synchronized movement sequence involving both upper, lower, face and hands body." for audio in audio_token_string]
             outputs_face, outputs_hand, outputs_upper, outputs_lower, output_texts = self.lm.generate_direct(input=audio_token_string, do_sample=True)
-            feats_face, feats_hand, feats_upper, feats_lower = self.unify_length(outputs_face, outputs_hand, outputs_upper, outputs_lower, self.args.test_length)
+            feats_face, feats_hand, feats_upper, feats_lower = self.unify_length(outputs_face, outputs_hand, outputs_upper, outputs_lower, self.test_length)
 
         if "text" in batch:
             text_token_string = batch["text"]

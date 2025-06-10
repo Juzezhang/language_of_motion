@@ -6,20 +6,20 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from rich import get_console
-from rich.table import Table
+# from rich import get_console
+# from rich.table import Table
 from omegaconf import OmegaConf
 from tqdm import tqdm
 from lom.config import parse_args
-from lom.data.build_data import build_data
+# from lom.data.build_data import build_data
 from lom.models.build_model import build_model
 from lom.utils.logger import create_logger
-import lom.render.matplot.plot_3d_global as plot_3d
+# import lom.render.matplot.plot_3d_global as plot_3d
 from os.path import join
 # from lom.archs.hubert.hubert_tokenizer import HubertTokenizer
 import torchaudio
 from torch import Tensor
-from typing import List, Union, Dict, Any
+# from typing import List, Union, Dict, Any
 from lom.utils.rotation_conversions import rotation_6d_to_matrix, rotation_6d_to_axis_angle, matrix_to_axis_angle, matrix_to_rotation_6d, axis_angle_to_6d
 from lom.utils.other_tools import velocity2position, estimate_linear_velocity
 import math
@@ -31,7 +31,8 @@ from lom.data.mixed_dataset.data_tools import (
 )
 import smplx
 import subprocess
-from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae, load_pretrained_lm
+from lom.utils.load_checkpoint import load_pretrained_vae, load_pretrained_lm
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 def audio_token_to_string(audio_token: Tensor):
     audio_token = audio_token.cpu() if audio_token.device.type == 'cuda' else audio_token
@@ -174,7 +175,8 @@ def load_audio_input_tokenize(audio_path, task, hubert_checkpoint, hubert_quanti
     }
     return return_dict
 
-def convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path):
+def convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path, audio_path=None):
+    print(f"Converting smplx to obj and rendering...(it will take a while)")
 
     smplx_model = smplx.create(smplx_path,
         model_type='smplx',
@@ -224,6 +226,86 @@ def convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mes
     else:
         print("Blender rendering completed successfully")
         print(f"Output: {result.stdout}")
+    
+    # Merge video with audio if audio_path is provided
+    if audio_path and os.path.exists(audio_path):
+        print(f"Merging video with audio from: {audio_path}")
+        
+        try:
+            # Find the generated video file (assuming it's an mp4 file in the mesh_dir)
+            video_files = [f for f in os.listdir(mesh_dir) if f.endswith('.mp4')]
+            
+            if not video_files:
+                print("Error: No video file found after rendering")
+                return
+            
+            # Use the first video file found
+            video_file = os.path.join(mesh_dir, video_files[0])
+            
+            # Create output filename for the video with audio
+            base_name = os.path.splitext(video_files[0])[0]
+            output_video_with_audio = os.path.join(mesh_dir, f"{base_name}_with_audio.mp4")
+            
+            # Load video and audio clips using moviepy
+            video_clip = VideoFileClip(video_file)
+            audio_clip = AudioFileClip(audio_path)
+            
+            # Get the duration of both video and audio
+            video_duration = video_clip.duration
+            audio_duration = audio_clip.duration
+            
+            print(f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s")
+            
+            # Handle duration mismatch
+            if audio_duration > video_duration:
+                # If audio is longer, trim it to match video duration
+                audio_clip = audio_clip.subclip(0, video_duration)
+                print(f"Audio trimmed to match video duration: {video_duration:.2f}s")
+            elif video_duration > audio_duration:
+                # If video is longer, trim it to match audio duration or loop audio
+                # Option 1: Trim video to match audio
+                # video_clip = video_clip.subclip(0, audio_duration)
+                # print(f"Video trimmed to match audio duration: {audio_duration:.2f}s")
+                
+                # Option 2: Loop audio to match video duration (uncomment if preferred)
+                loops_needed = int(np.ceil(video_duration / audio_duration))
+                audio_clip = audio_clip.loop(duration=video_duration)
+                print(f"Audio looped to match video duration: {video_duration:.2f}s")
+            
+            # Set the audio to the video clip
+            final_video = video_clip.set_audio(audio_clip)
+            
+            # Write the final video with audio
+            final_video.write_videofile(
+                output_video_with_audio,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                verbose=False,
+                logger=None  # Suppress moviepy logs
+            )
+            
+            print(f"Successfully merged video with audio: {output_video_with_audio}")
+            
+            # Clean up - close the clips to free memory
+            video_clip.close()
+            audio_clip.close()
+            final_video.close()
+            
+            # Optionally, remove the original video without audio
+            # os.remove(video_file)
+            # print(f"Removed original video file: {video_file}")
+            
+        except Exception as e:
+            print(f"Error merging video with audio using moviepy: {e}")
+            # If moviepy fails, you could fallback to the original method or handle the error
+            
+    else:
+        if audio_path:
+            print(f"Warning: Audio file not found at {audio_path}")
+        else:
+            print("No audio path provided, skipping audio merge")
 
 
 
@@ -277,9 +359,8 @@ def main():
     model.to(device)
     model.to(torch.bfloat16)
 
-    if cfg.DEMO.AUDIO and task == 'a2m':
+    if cfg.DEMO.AUDIO and task == 'cospeech':
 
-        # audio_tokenizer_path = cfg.TRAIN.AUDIO_TOKENIZER
 
         hubert_checkpoint = cfg.TRAIN.HUBERT_CHECKPOINT
         hubert_quantizer = cfg.TRAIN.HUBERT_QUANTIZER
@@ -289,11 +370,10 @@ def main():
         return_dict = load_audio_input_tokenize(audio_path, task, audio_tokenizer, hubert_quantizer)
         audio_token = return_dict['audio_token'].to(device)
 
-        # audio_token = np.load('/scr/juze/datasets/BEAT2/beat_english_v2.0.0/audios_token/2_scott_0_111_111.npy')
         audio_token_length = audio_token.shape[0]
         # Calculate number of chunks and their sizes
-        audio_token_fps = cfg.DATASET.audio_fps / cfg.DATASET.audio_down
-        motion_token_fps = cfg.DATASET.pose_fps / cfg.DATASET.unit_length
+        audio_token_fps = cfg.model.params.lm.params.audio_samplerate / cfg.model.params.lm.params.audio_down_sampling
+        motion_token_fps = cfg.model.params.lm.params.motion_framerate / cfg.model.params.lm.params.motion_down_sampling
 
         audio_short_length = int(cfg.TEST.TEST_LENGTH * audio_token_fps / motion_token_fps)        
         num_subdivision = math.floor(audio_token_length / audio_short_length) + 1
@@ -303,7 +383,7 @@ def main():
         rec_index_all_upper = []
         rec_index_all_lower = []
         rec_index_all_hands = []
-
+        # num_subdivision = 1
         for index in tqdm(range(num_subdivision), desc="Processing audio chunks"):
             # Calculate audio chunk indices
             audio_start = math.floor(index * audio_short_length)
@@ -356,7 +436,7 @@ def main():
         rec_index_lower = torch.clamp(rec_index_lower, 0, model.lm.lower_codebook_size - 1)
         rec_index_hands = torch.clamp(rec_index_hands, 0, model.lm.hand_codebook_size - 1)
 
-    elif text and task == 't2m':
+    elif text and task == 'text2motion':
         rec_index_all_face = []
         rec_index_all_upper = []
         rec_index_all_lower = []
@@ -502,7 +582,7 @@ def main():
         smplx_path = cfg.RENDER.SMPLX2020_MODEL_PATH
         mesh_save_name = save_name.replace('.npz', '.npy')
         mesh_save_path = os.path.join(output_dir, mesh_save_name)
-        convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path)
+        convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mesh_save_path, device, smplx_path, audio_path)
 
 
     logger.info('Model forward finished! Start saving results...')

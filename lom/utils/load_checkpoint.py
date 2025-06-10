@@ -150,7 +150,7 @@ def load_pretrained_lm(cfg, model, logger, phase="train"):
         checkpoint_path = cfg.TEST.CHECKPOINTS
 
     # Load full checkpoint and extract only the state_dict
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     state_dict = checkpoint['state_dict']  # Get only the state_dict
     
     # Create new state dict with modified keys
@@ -159,6 +159,8 @@ def load_pretrained_lm(cfg, model, logger, phase="train"):
         if 'lm.language_model' in key:
             new_key = key.replace('lm.language_model.', '')
             state_dict_lm[new_key] = value
+        else:
+            state_dict_lm[key] = value
     
     # Save only the modified state_dict
     model.lm.language_model.load_state_dict(state_dict_lm, strict=True)
