@@ -6,22 +6,16 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-# from rich import get_console
-# from rich.table import Table
 from omegaconf import OmegaConf
 from tqdm import tqdm
 from lom.config import parse_args
-# from lom.data.build_data import build_data
 from lom.models.build_model import build_model
 from lom.utils.logger import create_logger
-# import lom.render.matplot.plot_3d_global as plot_3d
 from os.path import join
-# from lom.archs.hubert.hubert_tokenizer import HubertTokenizer
 import torchaudio
 from torch import Tensor
-# from typing import List, Union, Dict, Any
 from lom.utils.rotation_conversions import rotation_6d_to_matrix, rotation_6d_to_axis_angle, matrix_to_axis_angle, matrix_to_rotation_6d, axis_angle_to_6d
-from lom.utils.other_tools import velocity2position, estimate_linear_velocity
+from lom.utils.other_tools import velocity2position
 import math
 from fairseq import checkpoint_utils
 from lom.data.mixed_dataset.data_tools import (

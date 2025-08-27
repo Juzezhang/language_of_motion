@@ -16,9 +16,9 @@ Language of Motion (LoM) is a framework that models human motion generation as a
 - [x] Initial code release
 - [x] Inference code for text-to-motion
 - [x] Inference code for co-speech gesture generation
-- [ ] Tokenizer training code
-- [ ] AMASS and LibriSpeech preprocessing code
-- [ ] Evaluation Benchmark results
+- [x] Tokenizer training code
+- [x] AMASS and LibriSpeech preprocessing code
+- [ ] Evaluation Benchmark results — **ETA:** Next week
 - [ ] Text-to-motion Result on rotation format
 - [ ] Language model training code
 
@@ -62,6 +62,9 @@ git clone https://github.com/pytorch/fairseq
 cd fairseq
 pip install --editable ./
 cd ../..
+
+# Version Conflict
+pip install --upgrade "omegaconf>=2.2,<2.4" "hydra-core>=1.3,<1.4"
 ```
 
 ### Setting Up Blender for Rendering
@@ -93,6 +96,7 @@ After running the script, you will have the following directory structure:
 model_files/
 ├── hubert_models/     # Hubert audio tokenizer models
 ├── smplx_models/      # SMPLX body models
+├── FLAME2020/         # FLAME face models
 ├── t2m_evaluators/    # Text-to-Motion evaluation metrics
 └── t5_models/         # T5 language models
 ```
@@ -111,34 +115,51 @@ python demo.py --cfg configs/demo_text2motion.yaml --text examples/text2motion.t
 ```bash
 python demo.py --cfg configs/demo_cospeech.yaml --audio examples/2_scott_0_111_111.wav --task cospeech --render
 ```
+After running the demo scripts, the generated motion results (including rendered videos and motion data) will be saved in the `./results` directory. For text-to-motion generation, you'll find the motion sequences in `.npz` format and rendered videos in `.mp4` format. For co-speech gesture generation, the results will include synchronized motion and audio in a single video file.
 
 ## 🗃️ Data Preparation
 
-To train the model, you will need to download the following datasets:
-
-1. **AMASS**: Human motion dataset from [AMASS website](https://amass.is.tue.mpg.de/), with text annotation from [HumanML3D](https://github.com/EricGuo5513/HumanML3D).
-2. **BEAT2**: Co-speech gesture dataset containing synchronized speech, emotion label, and motion data, available from the [BEAT website](https://drive.google.com/drive/folders/1ukbifhHc85qWTzspEgvAxCXwn9mK4ifr).
-3. **LibriSpeech**: Large-scale (1000+ hours) corpus of read English speech, downloadable from the [LibriSpeech website](https://www.openslr.org/12).
-
-After downloading, organize the datasets according to the following structure (detailed preprocessing instructions will be provided soon):
-
-```
-datasets/
-├── AMASS/
-├── BEAT2/
-    ├── beat_chinese_v2.0.0/
-    ├── beat_english_v2.0.0/
-    ├── beat_japanese_v2.0.0/
-    ├── beat_spanish_v2.0.0/
-└── LibriSpeech/
-```
+For detailed instructions on data preparation and preprocessing, please refer to the [Datasets Guide](./preprocess/README.md).
 
 ## 🔄 Training Pipeline
 
 Our comprehensive training documentation is coming soon! We'll provide detailed instructions for all three stages:
 1. Compositional Motion Tokenization (VQ-VAE Training)
-2. Language Model Pretraining
-3. Task-Specific Fine-tuning
+
+### 1. Compositional Motion Tokenization (VQ-VAE Training)
+
+**📖 [Detailed Documentation](./Compositional_Tokenization.md)**
+
+This stage trains separate VQ-VAE models for different body regions. From our experiments, we found that using 256 codebook dim with a 512 codebook size yields better performance for the face, hands, and upper body, while the lower body performs better with 128 codebook dim and a 512 codebook size. Accordingly, we provide this configuration file for reference.
+For detailed training procedures, metrics, and troubleshooting, see the [Compositional Motion Tokenization Guide](./Compositional_Tokenization.md).
+
+**Quick Start Commands:**
+
+Face Region:
+```bash
+python -m train --cfg configs/config_mixed_stage1_vq_face_256_512_ds4_wo_mesh_lr1e-4.yaml --nodebug
+```
+
+Upper Body Region:
+```bash
+python -m train --cfg configs/config_mixed_stage1_vq_upper_256_512_ds4_wo_mesh_lr1e-4.yaml --nodebug
+```
+
+Lower Body Region:
+```bash
+python -m train --cfg configs/config_mixed_stage1_vq_lower_128_512_ds4_wo_mesh_lr1e-4.yaml --nodebug
+```
+
+Hand Region:
+```bash
+python -m train --cfg configs/config_mixed_stage1_vq_hand_256_512_ds4_wo_mesh_lr1e-4.yaml --nodebug
+```
+
+### 2. Language Model Pretraining
+*Documentation coming soon*
+
+### 3. Task-Specific Fine-tuning  
+*Documentation coming soon*
 
 Stay tuned for updates on our training procedures and best practices.
 

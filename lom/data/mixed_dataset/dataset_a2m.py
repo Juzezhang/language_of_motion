@@ -25,7 +25,7 @@ from lom.data.mixed_dataset.data_tools import (
     joints_list, 
     JOINT_MASK_FACE,
     JOINT_MASK_UPPER,
-    JOINT_MASK_HANDS,
+    JOINT_MASK_HAND,
     JOINT_MASK_LOWER,
     JOINT_MASK_FULL,
 )
@@ -78,7 +78,7 @@ class Audio2MotionDataset(data.Dataset):
         self.joints = 55
         self.joint_mask_upper = JOINT_MASK_UPPER
         self.joint_mask_lower = JOINT_MASK_LOWER
-        self.joint_mask_hands = JOINT_MASK_HANDS
+        self.joint_mask_hand = JOINT_MASK_HAND
         self.joint_mask_face = JOINT_MASK_FACE
         self.joint_mask_full = JOINT_MASK_FULL
 

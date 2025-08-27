@@ -5,7 +5,7 @@ from os.path import join as pjoin
 from .mixed_dataset.utils.word_vectorizer import WordVectorizer
 from .mixed_dataset.scripts.motion_process import (process_file, recover_from_ric)
 from . import BASEDataModule
-from .mixed_dataset import MixedDatasetVQ, MixedDatasetCB, Audio2MotionDataset
+from .mixed_dataset import MixedDatasetVQ, MixedDatasetCB, Audio2MotionDataset, UpperDatasetVQ, LowerDatasetVQ, FaceDatasetVQ, HandDatasetVQ
 from .utils import lom_collate
 
 
@@ -25,12 +25,12 @@ class MixedDataModule(BASEDataModule):
         self.hparams.dataset_configs=dataset_configs
         self.hparams.debug = cfg.DEBUG
         self.hparams.stage = cfg.TRAIN.STAGE
-        self.hparams.audio_down = cfg.model.params.lm.params.audio_down_sampling
+        self.hparams.audio_down = cfg.model.params.modality_setup.params.audio_down
         self.hparams.w_vectorizer = WordVectorizer(
             cfg.DATASET.WORD_VERTILIZER_PATH, "our_vab")
 
         self.hparams.motion_representation = cfg.DATASET.motion_representation
-        if self.hparams.motion_representation == "separate_rot" or self.hparams.motion_representation == "full_rot":
+        if self.hparams.motion_representation == "rotation":
             self.hparams.smpl_path = cfg.DATASET.SMPL_PATH
             self.hparams.njoints = 55
         elif self.hparams.motion_representation == "h3d":
@@ -41,10 +41,30 @@ class MixedDataModule(BASEDataModule):
             dis_data_root_eval = pjoin(cfg.DATASET.HUMANML3D.MEAN_STD_PATH, 't2m/t2m', "Comp_v6_KLD01", "meta")
             self.hparams.mean_eval = np.load(pjoin(dis_data_root_eval, "mean.npy"))
             self.hparams.std_eval = np.load(pjoin(dis_data_root_eval, "std.npy"))
-
-        if cfg.TRAIN.STAGE == "vae" or cfg.TRAIN.STAGE == "vq" or cfg.TRAIN.STAGE == "token":
-            self.Dataset = MixedDatasetVQ
-            self.DatasetEval = MixedDatasetVQ
+        if cfg.TRAIN.STAGE == "vae" or cfg.TRAIN.STAGE == "vqvae" or cfg.TRAIN.STAGE == "token":
+            # self.Dataset = MixedDatasetVQ
+            # self.DatasetEval = MixedDatasetVQ
+            if cfg.Selected_part == 'upper':
+                self.Dataset = UpperDatasetVQ
+                self.DatasetEval = UpperDatasetVQ
+            elif cfg.Selected_part == 'lower' or cfg.Selected_part == 'lower_54':
+                self.Dataset = LowerDatasetVQ
+                self.DatasetEval = LowerDatasetVQ
+            elif cfg.Selected_part == 'face':
+                self.Dataset = FaceDatasetVQ
+                self.DatasetEval = FaceDatasetVQ
+            elif cfg.Selected_part == 'hand':
+                self.Dataset = HandDatasetVQ
+                self.DatasetEval = HandDatasetVQ
+            elif cfg.Selected_part == 'compositional':
+                self.Dataset = MixedDatasetVQ
+                self.DatasetEval = MixedDatasetVQ
+            elif cfg.Selected_part == 'full':
+                pass
+            elif cfg.Selected_part == 'full_new_loss':
+                pass
+            elif cfg.Selected_part == 'full_h3d':
+                pass
             # raise RuntimeError("Haven't setup this code!")
         elif 'lm' in cfg.TRAIN.STAGE:
             # Additional parameters

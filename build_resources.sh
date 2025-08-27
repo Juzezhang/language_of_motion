@@ -25,10 +25,19 @@ wget --post-data "username=$username&password=$password" 'https://download.is.tu
 echo "Downloading SMPLX lockedhead model..."
 wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=smplx&sfile=smplx_lockedhead_20230207.zip' -O './model_files/smplx_models/smplx_lockedhead_20230207.zip' --no-check-certificate --continue
 
+echo "Downloading FLAME 2020 model..."
+wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=flame&resume=1&sfile=FLAME2020.zip' -O './model_files/FLAME2020.zip' --no-check-certificate --continue
+
+echo "Downloading region files..."
+wget 'https://files.is.tue.mpg.de/tbolkart/FLAME/FLAME_masks.zip' -O './model_files/FLAME_masks.zip' --no-check-certificate --continue
+
+
 # Extract lockedhead model to a temporary directory
 echo "Extracting SMPLX lockedhead model..."
 mkdir -p ./model_files/temp_smplx
 unzip -o './model_files/smplx_models/smplx_lockedhead_20230207.zip' -d './model_files/temp_smplx/'
+unzip -o './model_files/FLAME2020.zip' -d './model_files/FLAME2020/'
+unzip -o './model_files/FLAME_masks.zip' -d './model_files/FLAME2020/'
 
 # Find and move all NPZ files to the target directory
 echo "Moving model files to the target directory..."
@@ -47,10 +56,19 @@ if [ -f "./model_files/temp_smplx/models_lockedhead/smplx/SMPLX_NEUTRAL.npz" ]; 
     mv ./model_files/temp_smplx/models_lockedhead/smplx/SMPLX_NEUTRAL.npz ./model_files/smplx_models/smplx/
 fi
 
+if [ -f "./model_files/FLAME2020/generic_model.pkl" ]; then
+    cp ./model_files/FLAME2020/generic_model.pkl ./model_files/FLAME2020/FLAME_NEUTRAL.pkl
+fi
+
+if [ -f "./model_files/flame_static_embedding.pkl" ]; then
+    cp ./model_files/flame_static_embedding.pkl ./model_files/FLAME2020/
+fi
+
 # Clean up
 echo "Cleaning up..."
 rm -rf './model_files/temp_smplx'
 rm -rf './model_files/smplx_models/smplx_lockedhead_20230207.zip'
+rm -rf './model_files/FLAME2020.zip'
 
 echo -e "\nSMPLX 2020 model setup completed successfully!"
 echo "Models are available in: model_files/smplx_models/"

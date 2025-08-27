@@ -139,6 +139,82 @@ def load_pretrained_vae(cfg, model, logger, phase="train"):
 
     return model
 
+def load_pretrained_vae_compositional(cfg, model, logger, phase="train"):
+    # Load pretrained VAE model
+    if phase == "train" or phase == "token" or phase == "demo":
+        # checkpoint_path= cfg.TRAIN.PRETRAINED_VQ
+        checkpoint_path_face = cfg.TEST.CHECKPOINTS_FACE
+        checkpoint_path_upper = cfg.TEST.CHECKPOINTS_UPPER
+        checkpoint_path_lower = cfg.TEST.CHECKPOINTS_LOWER
+        checkpoint_path_hand = cfg.TEST.CHECKPOINTS_HAND
+        # checkpoint_path_global = cfg.TEST.CHECKPOINTS_GLOBAL
+    elif phase == "test":
+        checkpoint_path_face = cfg.TEST.CHECKPOINTS_FACE
+        checkpoint_path_upper = cfg.TEST.CHECKPOINTS_UPPER
+        checkpoint_path_lower = cfg.TEST.CHECKPOINTS_LOWER
+        checkpoint_path_hand = cfg.TEST.CHECKPOINTS_HAND
+        # checkpoint_path_global = cfg.TEST.CHECKPOINTS_GLOBAL
+        
+    # Load full checkpoint and extract only the state_dict
+    checkpoint_face = torch.load(checkpoint_path_face, map_location="cpu", weights_only=False)
+    checkpoint_upper = torch.load(checkpoint_path_upper, map_location="cpu", weights_only=False)
+    checkpoint_lower = torch.load(checkpoint_path_lower, map_location="cpu", weights_only=False)
+    checkpoint_hand = torch.load(checkpoint_path_hand, map_location="cpu", weights_only=False)
+    # checkpoint_global = torch.load(checkpoint_path_global, map_location="cpu", weights_only=False)
+    
+    state_dict_face = checkpoint_face['state_dict']
+    state_dict_upper = checkpoint_upper['state_dict']
+    state_dict_lower = checkpoint_lower['state_dict']
+    state_dict_hand = checkpoint_hand['state_dict']
+    # state_dict_global = checkpoint_global['state_dict']
+    
+    # Create new state dict with modified keys
+    state_dict_face_new = {}
+    for key, value in state_dict_face.items():
+        if 'vae_face' in key:
+            new_key = key.replace('vae_face.', '')
+            state_dict_face_new[new_key] = value
+    
+    state_dict_upper_new = {}
+    for key, value in state_dict_upper.items():
+        if 'vae_upper' in key:
+            new_key = key.replace('vae_upper.', '')
+            state_dict_upper_new[new_key] = value
+    
+    state_dict_lower_new = {}
+    for key, value in state_dict_lower.items():
+        if 'vae_lower' in key:
+            new_key = key.replace('vae_lower.', '')
+            state_dict_lower_new[new_key] = value
+    
+    state_dict_hand_new = {}
+    for key, value in state_dict_hand.items():
+        if 'vae_hands' in key:
+            new_key = key.replace('vae_hands.', '')
+            state_dict_hand_new[new_key] = value
+        elif 'vae_hand' in key:
+            new_key = key.replace('vae_hand.', '')
+            state_dict_hand_new[new_key] = value
+
+    
+    # state_dict_global_new = {}
+    # for key, value in state_dict_global.items():
+    #     if 'vae_global' in key:
+    #         new_key = key.replace('vae_global.', '')
+    #         state_dict_global_new[new_key] = value
+
+    
+    # Save only the modified state_dict
+    model.vae_face.load_state_dict(state_dict_face_new, strict=True)
+    model.vae_upper.load_state_dict(state_dict_upper_new, strict=True)
+    model.vae_lower.load_state_dict(state_dict_lower_new, strict=True)
+    model.vae_hand.load_state_dict(state_dict_hand_new, strict=True)
+    # model.vae_global.load_state_dict(state_dict_global, strict=True)
+    # logger.info(f"Loaded pretrained VAE model from {checkpoint_path}")
+
+    return model
+
+
 
 def load_pretrained_lm(cfg, model, logger, phase="train"):
     # Load pretrained VAE model

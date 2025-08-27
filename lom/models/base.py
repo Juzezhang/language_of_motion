@@ -15,10 +15,7 @@ from torch import Tensor, nn
 class BaseModel(LightningModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-
         # self.configure_metrics()
- 
         # Ablation
         self.test_step_outputs = []
         self.times = []
@@ -27,13 +24,13 @@ class BaseModel(LightningModule):
     def training_step(self, batch, batch_idx):
         return self.allsplit_step("train", batch, batch_idx)
 
-    # def validation_step(self, batch, batch_idx):
-    #     return self.allsplit_step("val", batch, batch_idx)
+    def validation_step(self, batch, batch_idx):
+        return self.allsplit_step("val", batch, batch_idx)
 
-    # def test_step(self, batch, batch_idx):
-    #     outputs = self.allsplit_step("test", batch, batch_idx)
-    #     self.test_step_outputs.append(outputs)
-    #     return outputs
+    def test_step(self, batch, batch_idx):
+        outputs = self.allsplit_step("test", batch, batch_idx)
+        self.test_step_outputs.append(outputs)
+        return outputs
 
     def predict_step(self, batch, batch_idx):
         return self.forward(batch)
@@ -111,13 +108,13 @@ class BaseModel(LightningModule):
         return loss_dict
 
     def metrics_log_dict(self):
-
         # For TM2TMetrics MM
-        if self.trainer.datamodule.is_mm and "TM2TMetrics" in self.hparams.metrics_dict:
+        # if self.trainer.datamodule.is_mm and "TM2TMetrics" in self.hparams.metrics_dict:
+        if self.trainer.datamodule.is_mm and "TM2TMetrics" in self.metrics_dict:
             metrics_dicts = ['MMMetrics']
         else:
             metrics_dicts = self.hparams.metrics_dict
-
+            # metrics_dicts = self.metrics_dict
         # Compute all metrics
         metrics_log_dict = {}
         for metric in metrics_dicts:
@@ -128,32 +125,37 @@ class BaseModel(LightningModule):
                 f"Metrics/{metric}": value.item()
                 for metric, value in metrics_dict.items()
             })
-
         return metrics_log_dict
     
     def configure_optimizers(self):
         # Optimizer
-        optim_target = self.hparams.cfg.TRAIN.OPTIM.target
+        # optim_target = self.hparams.cfg.TRAIN.OPTIM.target
+        optim_target = self.cfg.TRAIN.OPTIM.target
         if len(optim_target.split('.')) == 1:
             optim_target = 'torch.optim.' + optim_target
         optimizer = get_obj_from_str(optim_target)(
-            params=self.parameters(), **self.hparams.cfg.TRAIN.OPTIM.params)
+            # params=self.parameters(), **self.hparams.cfg.TRAIN.OPTIM.params)
+            params=self.parameters(), **self.cfg.TRAIN.OPTIM.params)
 
         # Scheduler
-        scheduler_target = self.hparams.cfg.TRAIN.LR_SCHEDULER.target
+        # scheduler_target = self.hparams.cfg.TRAIN.LR_SCHEDULER.target
+        scheduler_target = self.cfg.TRAIN.LR_SCHEDULER.target
         if len(scheduler_target.split('.')) == 1:
             scheduler_target = 'torch.optim.lr_scheduler.' + scheduler_target
         lr_scheduler = get_obj_from_str(scheduler_target)(
-            optimizer=optimizer, **self.hparams.cfg.TRAIN.LR_SCHEDULER.params)
+            # optimizer=optimizer, **self.hparams.cfg.TRAIN.LR_SCHEDULER.params)
+            optimizer=optimizer, **self.cfg.TRAIN.LR_SCHEDULER.params)
 
         return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
 
     def configure_metrics(self):
         # self.metrics = BaseMetrics(datamodule=self.datamodule, **self.hparams)
-        self.metrics = BaseMetrics(cfg=self.hparams.cfg)
+        # self.metrics = BaseMetrics(cfg=self.hparams.cfg)
+        self.metrics = BaseMetrics(cfg=self.cfg)
 
     def save_npy(self, outputs):
-        cfg = self.hparams.cfg
+        # cfg = self.hparams.cfg
+        cfg = self.cfg
         output_dir = Path(
             os.path.join(
                 cfg.FOLDER,

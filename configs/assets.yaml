@@ -7,6 +7,7 @@ TEST:
 DATASET:
   # TASK_ROOT: model_files/mGPT_instructions
   SMPL_PATH: model_files/smplx_models
+  FLAME_PATH: model_files/FLAME2020/
   # TRANSFORM_PATH: model_files/transforms/
   WORD_VERTILIZER_PATH: model_files/t2m_evaluators/glove/
   KIT:
@@ -14,18 +15,18 @@ DATASET:
     SPLIT_ROOT: datasets/kit-ml # KIT splits directory
     MEAN_STD_PATH: model_files/t2m/
   HUMANML3D:
-    ROOT: "/scr/juze/datasets/HumanML3D" # HumanML3D directory
-    SPLIT_ROOT: "/scr/juze/datasets/HumanML3D" # HumanML3D splits directory
+    ROOT: "/data/datasets/HumanML3D" # HumanML3D directory
+    SPLIT_ROOT: "/data/datasets/HumanML3D" # HumanML3D splits directory
     MEAN_STD_PATH: model_files/t2m_evaluators/
   BEAT2:
-    ROOT: /scr/juze/datasets/BEAT2/beat_english_v2.0.0 # BEAT2 directory 
+    ROOT: /data/datasets/BEAT2/beat_english_v2.0.0 # BEAT2 directory 
     MEAN_STD_PATH: model_files/t2m/
   AMASS:
-    ROOT: /scr/juze/datasets/AMASS # AMASS directory 
+    ROOT: /data/datasets/AMASS # AMASS directory 
   LIBRISPEECH:
-    ROOT: "/scr/juze/datasets/LibriSpeech" # LibriSpeech directory  
+    ROOT: "/data/datasets/LibriSpeech" # LibriSpeech directory  
   BEAT2_AMASS:
-    ROOT: /scr/juze/datasets/beat2_amass # BEAT2 directory
+    ROOT: /data/datasets/beat2_amass # BEAT2 directory
     MEAN_STD_PATH: model_files/t2m_evaluators/
 METRIC:
   TM2T:

@@ -21,19 +21,17 @@ from lom.data.mixed_dataset.data_tools import (
     joints_list, 
     JOINT_MASK_FACE,
     JOINT_MASK_UPPER,
-    JOINT_MASK_HANDS,
+    JOINT_MASK_HAND,
     JOINT_MASK_LOWER,
     JOINT_MASK_FULL,
     BEAT_SMPLX_JOINTS,
     BEAT_SMPLX_FULL,
     BEAT_SMPLX_FACE,
     BEAT_SMPLX_UPPER,
-    BEAT_SMPLX_HANDS,
+    BEAT_SMPLX_HAND,
     BEAT_SMPLX_LOWER
 )
 from lom.utils.rotation_conversions import axis_angle_to_6d, axis_angle_to_matrix, rotation_6d_to_axis_angle, axis_angle_to_6d_np
-
-
 
 class MixedDatasetVQ(data.Dataset):
     def __init__(
@@ -52,8 +50,8 @@ class MixedDatasetVQ(data.Dataset):
         motion_representation="rotation",
         smpl_path=None,
         njoints=55,
-        use_cache=True,  # Whether to load data from cache when available
-        save_cache=True,  # Whether to save processed data to cache
+        use_cache=False,  # Whether to load data from cache when available
+        save_cache=False,  # Whether to save processed data to cache
         cache_format="pkl", # Format to use for caching: "h5", "npz", or "pkl"
         **kwargs,
     ):
@@ -75,13 +73,14 @@ class MixedDatasetVQ(data.Dataset):
         - save_cache: Whether to save processed data to cache.
         - cache_format: Format to use for caching ("h5", "npz", or "pkl").
         """
+        # Store debug flag for cache path generation
+        self.debug = debug
+        
         # Set max data size depending on debug mode
         if tiny or debug:
             self.maxdata = 10
         else:
-            # self.maxdata = 1e10
             self.maxdata = 1e10
-
 
         self.args = args
         self.dataset_configs = dataset_configs
@@ -97,13 +96,13 @@ class MixedDatasetVQ(data.Dataset):
         self.motion_representation = motion_representation
 
         # Store kwargs for SMPLX initialization if needed
-        if motion_representation == "separate_rot" or motion_representation == "full_rot":
-            self.select_type = kwargs['cfg']['Selected_type']
-            self.select_part = kwargs['cfg']["Representation_type"].get(self.select_type)
+        if motion_representation == "rotation":
+            # self.select_type = kwargs['cfg']['Selected_type']
+            # self.select_part = kwargs['cfg']["Representation_type"].get(self.select_type)
             # Initialize the joint masks for different body parts
             self.joint_mask_upper = JOINT_MASK_UPPER
             self.joint_mask_lower = JOINT_MASK_LOWER
-            self.joint_mask_hands = JOINT_MASK_HANDS
+            self.joint_mask_hand = JOINT_MASK_HAND
             self.joint_mask_face = JOINT_MASK_FACE
             self.joint_mask_full = JOINT_MASK_FULL
             # We'll initialize SMPLX only when needed, not upfront
@@ -115,12 +114,10 @@ class MixedDatasetVQ(data.Dataset):
         # Dictionary to store data and metadata
         self.data_dict = {}
         self.metadata = []
-
         # Load each dataset based on its type from the configuration
         for config in dataset_configs:
             # dataset_name = config.get("type")
             dataset_name = config.get("name")
-
             if dataset_name == "amass_h3d":
                 self._load_amass_h3d(config)
                 self.data_dict.update(self.data_dict_amass_h3d)
@@ -130,8 +127,8 @@ class MixedDatasetVQ(data.Dataset):
                 self.data_dict.update(self.data_dict_amass)
                 self.metadata.extend(self.metadata_amass)
             elif dataset_name == "BEAT2":
-                if self.split == 'test':
-                    continue
+                # if self.split == 'test':
+                #     continue
                 self._load_beat2(config)
                 self.data_dict.update(self.data_dict_beat2)
                 self.metadata.extend(self.metadata_beat2)
@@ -155,8 +152,10 @@ class MixedDatasetVQ(data.Dataset):
         cache_dir = os.path.join(dataset_path, 'cache')
         
         # Generate a unique filename based on dataset configuration
-        # Use only attributes we know are available
+        # Include debug identifier if in debug mode
         config_str = f"{dataset_type}_{self.split}_vq"
+        if self.debug:
+            config_str = f"{dataset_type}_{self.split}_vq_debug"
         
         # Set the file extension based on the cache format
         if self.cache_format == "h5":
@@ -202,7 +201,7 @@ class MixedDatasetVQ(data.Dataset):
             
             # Save based on the selected format
             if self.cache_format == "pkl":
-                # Simple pickle save
+                # Simple pickle save - fastest and most compatible
                 with open(cache_path, 'wb') as f:
                     pickle.dump({
                         'data_dict': numpy_data_dict,
@@ -210,14 +209,14 @@ class MixedDatasetVQ(data.Dataset):
                     }, f, protocol=pickle.HIGHEST_PROTOCOL)
                 
             elif self.cache_format == "npz":
-                # Faster uncompressed saving
+                # Faster uncompressed saving with NumPy
                 np.savez(cache_path, 
                     data_dict=numpy_data_dict, 
                     metadata=metadata
                 )
                 
             elif self.cache_format == "h5":
-                # Keep existing HDF5 implementation
+                # HDF5 format - good for large datasets with compression
                 with h5py.File(cache_path, 'w') as f:
                     # Save metadata as a JSON string
                     metadata_str = json.dumps(metadata)
@@ -289,6 +288,8 @@ class MixedDatasetVQ(data.Dataset):
         Returns:
         - tuple (data_dict, metadata) if successful, (None, None) otherwise
         """
+
+        
         if not self.use_cache:
             return None, None
         
@@ -298,16 +299,16 @@ class MixedDatasetVQ(data.Dataset):
         
         try:
             print(f"Loading {dataset_name} dataset from cache: {cache_path}")
-            
+
             if self.cache_format == "pkl":
-                # Simple pickle load
+                # Simple pickle load - fastest method
                 with open(cache_path, 'rb') as f:
                     cached_data = pickle.load(f)
                     data_dict = cached_data['data_dict']
                     metadata = cached_data['metadata']
                     
             elif self.cache_format == "npz":
-                # Ultra-simple NPZ load - just two objects
+                # Load from NPZ format - fast with NumPy
                 loaded = np.load(cache_path, allow_pickle=True)
                 
                 # More robust metadata loading - handle both direct arrays and object arrays
@@ -328,7 +329,7 @@ class MixedDatasetVQ(data.Dataset):
                     data_dict = {}
             
             elif self.cache_format == "h5":
-                # Keep existing HDF5 implementation
+                # Load from HDF5 format - good for large datasets
                 data_dict = {}
                 with h5py.File(cache_path, 'r') as f:
                     # Load metadata
@@ -392,7 +393,7 @@ class MixedDatasetVQ(data.Dataset):
         Initialize the SMPLX model if it hasn't been initialized yet.
         This is done lazily to avoid unnecessary GPU memory usage when loading from cache.
         """
-        if self.smplx_2020 is None and (self.motion_representation == "separate_rot" or self.motion_representation == "full_rot"):
+        if self.smplx_2020 is None and (self.motion_representation == "rotation"):
             print("Initializing SMPLX model for data processing...")
             self.smplx_2020 = smplx.create(self.smpl_path,
                 model_type='smplx',
@@ -427,27 +428,30 @@ class MixedDatasetVQ(data.Dataset):
         
         print(f"Processing BEAT2 dataset...")
         
-        # data_root = config.get("data_root")
+        # Set up dataset parameters
         self.data_root_beat2 = data_root
         self.ori_length = config.pose_length
         additional_data = config.additional_data
         training_speakers = config.training_speakers
         pose_rep = config.pose_rep
         pose_fps_beat2 = config.pose_fps
-        # Load split rules
+        
+        # Load split rules from CSV file
         split_rule = pd.read_csv(pjoin(data_root, "train_test_split.csv"))
         
-        # Filter based on training speakers
-
+        # Filter files based on training speakers and split type
         if self.split == 'token':
+            # For token split, only filter by training speakers
             self.selected_file = split_rule.loc[
                 ((split_rule['id'].str.split("_").str[0].astype(int).isin(training_speakers)))
             ]
         else:
+            # For other splits, filter by both split type and training speakers
             self.selected_file = split_rule.loc[
                 (split_rule['type'] == self.split) &
                 ((split_rule['id'].str.split("_").str[0].astype(int).isin(training_speakers)))
             ]
+            # Include additional data if specified
             if additional_data:
                 split_b = split_rule.loc[
                     (split_rule['type'] == 'additional') & 
@@ -458,27 +462,29 @@ class MixedDatasetVQ(data.Dataset):
         self.data_dict_beat2 = {}
         self.metadata_beat2 = []
 
-        # Process each file
+        # Process each file in the selected files
         for index, file_name in tqdm(self.selected_file.iterrows()):
             f_name = file_name["id"]
             pose_file = pjoin(self.data_root_beat2, pose_rep, f_name + ".npz")
             
             # try:
-                # Load pose data
+                # Load pose data from NPZ file
             pose_data = np.load(pose_file, allow_pickle=True)
             poses = pose_data["poses"]
-            n, c = poses.shape[0], poses.shape[1]
+            n, c = poses.shape[0], poses.shape[1]  # n: number of frames, c: pose dimension
             trans = pose_data["trans"]
             betas = pose_data["betas"]
+            # Repeat betas for each frame
             betas = np.repeat(pose_data["betas"].reshape(1, 300), poses.shape[0], axis=0)
 
             expressions = pose_data["expressions"]
-            
-            # Process pose data
+
+            # Apply joint mask to filter relevant joints
             pose_processed = poses * JOINT_MASK_FULL
             pose_processed = pose_processed[:, JOINT_MASK_FULL.astype(bool)]
-            if self.select_type == 'full_rot' or self.select_type == 'separate_rot':
-                # Calculate foot contacts using existing function
+            
+            if self.motion_representation == 'rotation':
+                # Calculate foot contacts using existing function or load from cache
                 foot_contacts_path = pjoin(self.data_root_beat2, 'foot_contacts', f_name + '.npy')
                 if os.path.exists(foot_contacts_path):
                     contacts = np.load(foot_contacts_path)
@@ -486,44 +492,48 @@ class MixedDatasetVQ(data.Dataset):
                     contacts = self.comput_foot_contacts(pose_data)
                     os.makedirs(pjoin(self.data_root_beat2, 'foot_contacts'), exist_ok=True)
                     np.save(foot_contacts_path, contacts)
+                # Concatenate foot contacts to pose data
                 pose_processed = np.concatenate([pose_processed, contacts], axis=1)
 
-
-            tar_pose = pose_processed[ :, :165]
-            tar_contact = pose_processed[ :, 165:169]
-            tar_exps = expressions
-            tar_trans = trans
+            # Extract different components from processed pose
+            tar_pose = pose_processed[ :, :165]  # Body pose (55 joints * 3)
+            tar_contact = pose_processed[ :, 165:169]  # Foot contacts (4 values)
+            tar_exps = expressions  # Facial expressions
+            tar_trans = trans  # Translation
 
             # Extract and convert jaw pose data
-            tar_pose_jaw = tar_pose[:, 66:69]
-
-            tar_pose_jaw_6d = axis_angle_to_6d_np(tar_pose_jaw).reshape(n, 6)
+            tar_pose_jaw = tar_pose[:, 66:69]  # Jaw pose (3D rotation)
+            tar_pose_jaw_6d = axis_angle_to_6d_np(tar_pose_jaw).reshape(n, 6)  # Convert to 6D representation
             
-            # Concatenate jaw pose and expressions for face
+            # Concatenate jaw pose and expressions for face data
             tar_pose_face = np.concatenate([tar_pose_jaw_6d, tar_exps], axis=1)
 
             # Extract and convert hand pose data
-            tar_pose_hands = tar_pose[:, 25 * 3:55 * 3].reshape(n, 30, 3)
+            tar_pose_hands = tar_pose[:, 25 * 3:55 * 3].reshape(n, 30, 3)  # 30 hand joints
             tar_pose_hands_6d = axis_angle_to_6d_np(tar_pose_hands).reshape(n, 30 * 6)
 
             # Extract and convert upper body pose data
-            tar_pose_upper = tar_pose[:, self.joint_mask_upper.astype(bool)].reshape(n, 13, 3)
+            tar_pose_upper = tar_pose[:, self.joint_mask_upper.astype(bool)].reshape(n, 13, 3)  # 13 upper body joints
             tar_pose_upper_6d = axis_angle_to_6d_np(tar_pose_upper).reshape(n, 13 * 6)
 
             # Extract and convert lower body pose data
-            tar_pose_leg = tar_pose[:, self.joint_mask_lower.astype(bool)].reshape(n, 9, 3)
+            tar_pose_leg = tar_pose[:, self.joint_mask_lower.astype(bool)].reshape(n, 9, 3)  # 9 lower body joints
             tar_pose_leg_6d = axis_angle_to_6d_np(tar_pose_leg).reshape(n, 9 * 6)
             
-            # Convert other data to tensors
+            # Combine lower body pose with translation and contacts
             tar_pose_lower = np.concatenate([tar_pose_leg_6d, tar_trans, tar_contact], axis=1)
+            
+            # Convert full pose to 6D representation
             tar_pose_6d = axis_angle_to_6d_np(tar_pose.reshape(n, 55, 3)).reshape(n, 55 * 6)
 
+            # Calculate time segments
             round_seconds_skeleton = tar_pose_6d.shape[0] // pose_fps_beat2
             if round_seconds_skeleton == 0:
                 round_seconds_skeleton = 1
-            clip_s_t, clip_e_t = 0, round_seconds_skeleton - 0  # assume [10, 90]s
-            clip_s_f_pose, clip_e_f_pose = clip_s_t * pose_fps_beat2, clip_e_t * pose_fps_beat2  # [150,90*15]
+            clip_s_t, clip_e_t = 0, round_seconds_skeleton - 0  # Start and end time in seconds
+            clip_s_f_pose, clip_e_f_pose = clip_s_t * pose_fps_beat2, clip_e_t * pose_fps_beat2  # Start and end frame
 
+            # Determine stride and cut length based on split type
             if self.split == 'test' or self.split == 'token':  # stride = length for test
                 cut_length = clip_e_f_pose - clip_s_f_pose
                 stride = cut_length
@@ -531,12 +541,17 @@ class MixedDatasetVQ(data.Dataset):
             else:
                 stride = int(config.stride)
                 cut_length = int(self.ori_length)
+            
+            # Calculate number of subdivisions
             num_subdivision = math.floor((clip_e_f_pose - clip_s_f_pose - cut_length) / stride) + 1
 
-            for i in range(num_subdivision):  # cut into around 2s chip, (self npose)
+            # Create segments of motion data
+            for i in range(num_subdivision):  # cut into segments (e.g., 2s clips)
 
                 start_idx = clip_s_f_pose + i * config.stride
                 fin_idx = start_idx + cut_length
+                
+                # Extract segment from each data type
                 sample_pose = tar_pose_6d[start_idx:fin_idx]
                 sample_face = tar_pose_face[start_idx:fin_idx]
                 sample_hand = tar_pose_hands_6d[start_idx:fin_idx]
@@ -546,7 +561,9 @@ class MixedDatasetVQ(data.Dataset):
                 sample_shape = betas[start_idx:fin_idx]
                 sample_expressions = expressions[start_idx:fin_idx]
 
+                # Create unique name for this segment
                 new_name = 'beat2_' + '%s_%d' % (f_name,i)
+                
                 # Store processed data
                 self.data_dict_beat2[new_name] = {
                     'face': sample_face,
@@ -561,7 +578,8 @@ class MixedDatasetVQ(data.Dataset):
                     'dataset_name': 'beat2',
                 }
                 self.metadata_beat2.append(new_name)
-                            # for fast debug
+                
+            # Break early for debugging if max data reached
             if index >= self.maxdata:
                 break
         
@@ -588,32 +606,41 @@ class MixedDatasetVQ(data.Dataset):
         
         print(f"Processing AMASS_H3D dataset...")
         
+        # Set up dataset parameters
         self.data_root_amass_h3d = data_root
         pose_fps_amass = config.pose_fps
         motion_unit = config.motion_unit
+        
+        # Load split file containing dataset splits
         split_file = pd.read_csv(pjoin(self.data_root_amass_h3d, f"new_{self.split}.csv"))
+        
         # Calculate maximum lengths for data
         self.max_length = int(config.pose_length)
         self.ori_length = config.pose_length
 
         self.metadata_amass_h3d = []
         self.data_dict_amass_h3d = {}
+        
         ##################  AMASS in Humanml3d Format ##################
-        # Define lengths for data processing
+        # Process each file in the split
         for index, file_name in tqdm(split_file.iterrows()):
             f_name = file_name["id"]
             pose_file = pjoin(self.data_root_amass_h3d, 'new_joint_vecs', f_name+'.npy')
+            
+            # Load pre-processed joint vectors
             pose_each_file = np.load(pose_file, allow_pickle=True)
-            # Normalization
+            
+            # Normalize using pre-computed mean and std
             pose_each_file = (pose_each_file - self.h3d_mean) / self.h3d_std
 
+            # Calculate time segments
             round_seconds_skeleton = pose_each_file.shape[0] // motion_unit
             if round_seconds_skeleton == 0:
                 round_seconds_skeleton = 1
-            clip_s_t, clip_e_t = 0, round_seconds_skeleton - 0  # assume [10, 90]s
-            clip_s_f_pose, clip_e_f_pose = clip_s_t * pose_fps_amass, clip_e_t * motion_unit  # [150,90*15]
+            clip_s_t, clip_e_t = 0, round_seconds_skeleton - 0  # Start and end time
+            clip_s_f_pose, clip_e_f_pose = clip_s_t * pose_fps_amass, clip_e_t * motion_unit  # Start and end frame
 
-            
+            # Determine stride and cut length based on split type
             if self.split == 'test':  # stride = length for test
                 cut_length = clip_e_f_pose - clip_s_f_pose
                 stride = cut_length
@@ -621,16 +648,28 @@ class MixedDatasetVQ(data.Dataset):
             else:
                 stride = int(config.stride)
                 cut_length = int(int(self.ori_length))
+            
+            # Calculate number of subdivisions
             num_subdivision = math.floor((clip_e_f_pose - clip_s_f_pose - cut_length) / stride) + 1
 
-            for i in range(num_subdivision):  # cut into around 2s chip, (self npose)
+            # Create segments of motion data
+            for i in range(num_subdivision):  # cut into segments (e.g., 2s clips)
                 start_idx = clip_s_f_pose + i * config.stride
                 fin_idx = start_idx + cut_length
+                
+                # Extract segment
                 sample_pose = pose_each_file[start_idx:fin_idx]
+                
+                # For H3D format, trans and shape are not used (set to zeros)
                 sample_trans = np.zeros(1)
                 sample_shape = np.zeros(1)
+                
+                # Only add valid segments (non-empty and non-zero)
                 if sample_pose.any() and sample_pose.size != 0:
+                    # Create unique name for this segment
                     new_name = 'amass_' + '%s_%d' % (f_name,i)
+                    
+                    # Store processed data
                     self.data_dict_amass_h3d[new_name] = {
                         'id' : f_name,
                         'pose': sample_pose,
@@ -638,7 +677,8 @@ class MixedDatasetVQ(data.Dataset):
                         'trans': sample_trans,
                     }
                     self.metadata_amass_h3d.append(new_name)
-            # for fast debug
+                    
+            # Break early for debugging if max data reached
             if index >= self.maxdata:
                 break
         
@@ -668,29 +708,34 @@ class MixedDatasetVQ(data.Dataset):
         
         print(f"Processing AMASS dataset...")
         
+        # Set up dataset parameters
         self.data_root_amass = data_root
         pose_fps_amass = config.pose_fps
-        # split_file = pd.read_csv(pjoin(self.data_root_amass, f"new_{self.split}.csv"))
-
+        
+        # Load train and test splits from text files
         split_file_train = pjoin(self.data_root_amass, 'train.txt')
-        # Data id list
+        
+        # Load training data IDs
         id_list_train = []
         with cs.open(split_file_train, "r") as f:
             for line in f.readlines():
                 id_list_train.append(line.strip())
 
         split_file_test = pjoin(self.data_root_amass, 'test.txt')
-        # Data id list
+        
+        # Load test data IDs
         id_list_test = []
         with cs.open(split_file_test, "r") as f:
             for line in f.readlines():
                 id_list_test.append(line.strip())
 
+        # Select appropriate ID list based on split
         if self.split == 'train':
             id_list_amass = id_list_train
         elif self.split == 'test':
             id_list_amass = id_list_test
         else:
+            # For other splits, use both train and test
             id_list_amass = id_list_train + id_list_test
 
         self.ori_length = config.pose_length
@@ -702,29 +747,32 @@ class MixedDatasetVQ(data.Dataset):
 
         ##################  AMASS  ##################
         # Process each file
-        # for index, file_name in tqdm(split_file.iterrows()):
         for index, file_name in tqdm(enumerate(id_list_amass)):
             try:
-                # f_name = file_name["id"]
+                # Load pose data from aligned AMASS data
                 pose_file = pjoin(self.data_root_amass, 'amass_data_align', file_name+'.npz')
                 pose_data = np.load(pose_file, allow_pickle=True)
+                
+                # Calculate stride for downsampling to target FPS
                 stride = int(30 / pose_fps_amass)
 
-                # Process pose data
+                # Extract and downsample pose data
                 poses = pose_data["poses"][::stride]
-                n, c = poses.shape[0], poses.shape[1]
+                n, c = poses.shape[0], poses.shape[1]  # n: number of frames, c: pose dimension
                 tar_trans = pose_data["trans"][::stride]
 
+                # Pad betas to 300 dimensions (AMASS uses 16, but we need 300 for SMPLX)
                 padded_betas = np.zeros(300)
                 padded_betas[:16] = pose_data["betas"]
                 betas = np.repeat(padded_betas.reshape(1, 300), n, axis=0)
                 
-                # Process pose data
+                # Apply joint mask to filter relevant joints
                 pose_processed = poses * JOINT_MASK_FULL
                 pose_processed = pose_processed[:, JOINT_MASK_FULL.astype(bool)]
                 
-                if self.select_type == 'full_rot' or self.select_type == 'separate_rot':
-                    # Calculate foot contacts
+                # if self.select_type == 'full_rot' or self.select_type == 'separate_rot':
+                if self.motion_representation == 'rotation':
+                    # Calculate foot contacts for rotation representation
                     foot_contacts_path = pjoin(self.data_root_amass, 'foot_contacts', file_name + '.npy')
                     if os.path.exists(foot_contacts_path):
                         contacts = np.load(foot_contacts_path)
@@ -732,17 +780,19 @@ class MixedDatasetVQ(data.Dataset):
                         contacts = self.comput_foot_contacts(pose_data)
                         os.makedirs(pjoin(self.data_root_amass, 'foot_contacts'), exist_ok=True)
                         np.save(foot_contacts_path, contacts)
+                    # Concatenate foot contacts to pose data
                     pose_processed = np.concatenate([pose_processed, contacts], axis=1)
                 
+                # Extract body pose (55 joints * 3)
                 tar_pose = pose_processed[:, :165]
 
-
+                # Get foot contacts
                 tar_contact = contacts
 
-                # Extract and convert jaw pose data
-                tar_pose_face = np.zeros((n, 106))
-                # Extract and convert hand pose data
-                tar_pose_hands_6d = np.zeros((n, 180))
+                # AMASS doesn't have facial expressions or hand poses, so we create zeros
+                tar_pose_face = np.zeros((n, 106))  # No jaw pose or expressions
+                tar_pose_hands_6d = np.zeros((n, 180))  # No hand pose
+                
                 # Extract and convert upper body pose data
                 tar_pose_upper = tar_pose[:, self.joint_mask_upper.astype(bool)].reshape(n, 13, 3)
                 tar_pose_upper_6d = axis_angle_to_6d_np(tar_pose_upper).reshape(n, 13 * 6)
@@ -754,8 +804,8 @@ class MixedDatasetVQ(data.Dataset):
                 # Combine lower body pose with translation and contacts
                 tar_pose_lower = np.concatenate([tar_pose_leg_6d, tar_trans, tar_contact], axis=1)
                 
-                # # Convert full pose to 6D representation
-                tar_pose_6d = axis_angle_to_6d_np(tar_pose.reshape(n, 55, 3)).reshape(n, 55, 6)
+                # Convert full pose to 6D representation
+                tar_pose_6d = axis_angle_to_6d_np(tar_pose.reshape(n, 55, 3)).reshape(n, 55 * 6)
 
                 # Calculate time segments
                 round_seconds_skeleton = tar_pose_6d.shape[0] // pose_fps_amass
@@ -764,6 +814,7 @@ class MixedDatasetVQ(data.Dataset):
                 clip_s_t, clip_e_t = 0, round_seconds_skeleton - 0
                 clip_s_f_pose, clip_e_f_pose = clip_s_t * pose_fps_amass, clip_e_t * pose_fps_amass
             
+                # Determine stride and cut length based on split type
                 if self.split == 'test' or self.split == 'token':  # stride = length for test
                     cut_length = clip_e_f_pose - clip_s_f_pose
                     stride = cut_length
@@ -772,25 +823,28 @@ class MixedDatasetVQ(data.Dataset):
                     stride = int(config.stride)
                     cut_length = int(self.ori_length)
                 
+                # Calculate number of subdivisions
                 num_subdivision = math.floor((clip_e_f_pose - clip_s_f_pose - cut_length) / stride) + 1
 
-                # Create segments
+                # Create segments of motion data
                 for i in range(num_subdivision):
                     start_idx = clip_s_f_pose + i * stride
                     fin_idx = start_idx + cut_length
                     
-                    # Skip if out of bounds
+                    # Skip if segment goes out of bounds
                     if fin_idx > tar_pose_6d.shape[0]:
                         continue
-                        
+                    
+                    # Extract segment from each data type    
                     sample_pose = tar_pose_6d[start_idx:fin_idx]
-                    sample_face = tar_pose_face[start_idx:fin_idx]  # Just jaw pose, no expressions
-                    sample_hand = tar_pose_hands_6d[start_idx:fin_idx]
+                    sample_face = tar_pose_face[start_idx:fin_idx]  # Empty for AMASS
+                    sample_hand = tar_pose_hands_6d[start_idx:fin_idx]  # Empty for AMASS
                     sample_upper = tar_pose_upper_6d[start_idx:fin_idx]
                     sample_lower = tar_pose_lower[start_idx:fin_idx]
                     sample_trans = tar_trans[start_idx:fin_idx]
                     sample_shape = betas[start_idx:fin_idx]
 
+                    # Create unique name for this segment
                     new_name = 'amass_' + '%s_%d' % (file_name, i)
 
                     # Store processed data
@@ -807,10 +861,11 @@ class MixedDatasetVQ(data.Dataset):
                     }
                     self.metadata_amass.append(new_name)
             except Exception as e:
+                # Skip files that can't be processed
                 # print(f"Error processing file {f_name}: {str(e)}")
                 continue
 
-            # For fast debug
+            # Break early for debugging if max data reached
             if index >= self.maxdata:
                 break
         
@@ -821,36 +876,51 @@ class MixedDatasetVQ(data.Dataset):
         """
         Compute foot contacts from motion data.
         This method requires SMPLX, so we ensure it's initialized.
+        
+        Parameters:
+        - m_data: Motion data dictionary containing betas, poses, trans, and expressions
+        
+        Returns:
+        - contacts: Binary array indicating foot contacts (1 for contact, 0 for no contact)
         """
         # Make sure SMPLX is initialized
         self._initialize_smplx_if_needed()
         
+        # Extract motion components
         betas, poses, trans, exps = m_data["betas"], m_data["poses"], m_data["trans"], m_data["expressions"]
-        n, c = poses.shape[0], poses.shape[1]
+        n, c = poses.shape[0], poses.shape[1]  # n: number of frames, c: pose dimension
         
-        # determine the dimension of betas
+        # Determine the dimension of betas
         beta_dim = betas.shape[-1]  # get the last dimension of betas
 
         if beta_dim == 16:
+            # AMASS dataset has 16 beta parameters, need to pad to 300
             padded_betas = np.zeros(300)
             padded_betas[:16] = betas
-            exps = torch.zeros([n, 100], dtype=torch.float32).cuda()  # AMASS dataset
+            exps = torch.zeros([n, 100], dtype=torch.float32).cuda()  # AMASS dataset has no expressions
         else:
+            # BEAT2 dataset already has 300 beta parameters
             padded_betas = betas
-            exps = torch.from_numpy(m_data["expressions"]).cuda().float()  # BEAT2 dataset
+            exps = torch.from_numpy(m_data["expressions"]).cuda().float()  # BEAT2 dataset has expressions
 
+        # Prepare betas for all frames
         betas = padded_betas.reshape(1, 300)  # can be 16 or 300
         betas = np.tile(betas, (n, 1))
 
+        # Convert all data to tensors on GPU
         betas = torch.from_numpy(betas).cuda().float()
         poses = torch.from_numpy(poses.reshape(n, c)).cuda().float()
         trans = torch.from_numpy(trans.reshape(n, 3)).cuda().float()
+        
+        # Process in batches to avoid memory issues
         max_length = 128
-        s, r = n // max_length, n % max_length
+        s, r = n // max_length, n % max_length  # s: number of full batches, r: remainder
         all_tensor = []
         
+        # Process full batches
         for i in range(s):
             with torch.no_grad():
+                # Run SMPLX forward pass to get joint positions
                 joints = self.smplx_2020(
                     betas=betas[i * max_length:(i + 1) * max_length],
                     transl=trans[i * max_length:(i + 1) * max_length],
@@ -864,8 +934,10 @@ class MixedDatasetVQ(data.Dataset):
                     return_joints=True,
                     leye_pose=poses[i * max_length:(i + 1) * max_length, 69:72],
                     reye_pose=poses[i * max_length:(i + 1) * max_length, 72:75],
-                )['joints'][:, (7, 8, 10, 11), :].reshape(max_length, 4, 3).cpu()
+                )['joints'][:, (7, 8, 10, 11), :].reshape(max_length, 4, 3).cpu()  # Extract foot joints
             all_tensor.append(joints)
+            
+        # Process remainder frames if any
         if r != 0:
             with torch.no_grad():
                 joints = self.smplx_2020(
@@ -883,12 +955,18 @@ class MixedDatasetVQ(data.Dataset):
                     reye_pose=poses[s * max_length:s * max_length + r, 72:75],
                 )['joints'][:, (7, 8, 10, 11), :].reshape(r, 4, 3).cpu()
             all_tensor.append(joints)
+            
+        # Concatenate all batches
         joints = torch.cat(all_tensor, axis=0)  # all, 4, 3
+        
+        # Calculate foot velocities
         feetv = torch.zeros(joints.shape[1], joints.shape[0])
-        joints = joints.permute(1, 0, 2)
+        joints = joints.permute(1, 0, 2)  # 4, all, 3
         feetv[:, :-1] = (joints[:, 1:] - joints[:, :-1]).norm(dim=-1)
-        contacts = (feetv < 0.01).numpy().astype(float)
-        contacts = contacts.transpose(1, 0)
+        
+        # Determine contacts based on velocity threshold
+        contacts = (feetv < 0.01).numpy().astype(float)  # Contact when velocity < 0.01
+        contacts = contacts.transpose(1, 0)  # all, 4
 
         return contacts
 
@@ -909,6 +987,7 @@ class MixedDatasetVQ(data.Dataset):
         Returns:
         - A dictionary containing data with tensors for model input.
         """
+        # Get the data key from metadata
         dataset_name = self.metadata[item]
         data = self.data_dict[dataset_name]
         
@@ -918,21 +997,22 @@ class MixedDatasetVQ(data.Dataset):
         # Convert NumPy arrays to PyTorch tensors for model usage
         for key, value in data.items():
             if isinstance(value, np.ndarray):
-                # Convert NumPy arrays to tensors
+                # Convert NumPy arrays to tensors with float32 dtype
                 formatted_data[key] = torch.from_numpy(value).float()
             else:
-                # Keep other data types as is
+                # Keep other data types as is (strings, etc.)
                 formatted_data[key] = value
                 
         # Get motion length from the pose data
         motion_len = formatted_data['pose'].shape[0] if 'pose' in formatted_data else 0
         
-        # Add additional information
+        # Add additional information needed for training
         formatted_data.update({
-            "id_name": formatted_data.get('id', ""),
-            "dataset_name": formatted_data.get('dataset_name', ""),
-            "split_name": "vq",
-            "motion_len": motion_len,
+            "id_name": formatted_data.get('id', ""),  # Original file ID
+            "dataset_name": formatted_data.get('dataset_name', ""),  # Dataset source
+            "select_part": "compositional",
+            "split_name": "vq",  # Split name for VQ training
+            "motion_len": motion_len,  # Length of motion sequence
         })
         
         return formatted_data
