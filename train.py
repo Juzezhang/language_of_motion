@@ -5,7 +5,7 @@ from lom.config import parse_args, instantiate_from_config
 from lom.data.build_data import build_data
 from lom.models.build_model import build_model
 from lom.utils.logger import create_logger
-from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae
+from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae, load_pretrained_vae_compositional, load_pretrained_vae_compositional_h3d
 
 
 def main():
@@ -68,6 +68,10 @@ def main():
     # Strict load vae model
     if OmegaConf.select(cfg.TRAIN, 'PRETRAINED_VQ') is not None:
         load_pretrained_vae(cfg, model, logger)
+    
+    if OmegaConf.select(cfg.TRAIN, 'PRETRAINED_FACE') is not None:
+        load_pretrained_vae_compositional(cfg, model, logger)
+        # load_pretrained_vae_compositional_h3d(cfg, model, logger)
 
     # Lightning Fitting
     if cfg.TRAIN.RESUME:

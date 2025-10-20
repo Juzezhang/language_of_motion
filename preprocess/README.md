@@ -71,3 +71,11 @@ Generate only with global rotation template
 ```bash
 python -m preprocess.beat2_face_template_generator --template_type with_global
 ```
+
+And also download the emotion label from [BEAT dataset](https://huggingface.co/datasets/H-Liu1997/BEAT)
+
+
+### LibriSpeech Dataset
+
+
+

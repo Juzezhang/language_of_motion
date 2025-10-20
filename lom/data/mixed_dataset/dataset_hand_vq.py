@@ -38,6 +38,7 @@ class HandDatasetVQ(data.Dataset):
         self,
         args,
         dataset_configs,
+        dataset_configs_test,
         split,
         # unit_length=4,
         # fps=20,
@@ -60,6 +61,7 @@ class HandDatasetVQ(data.Dataset):
 
         Parameters:
         - dataset_configs: List of configurations for different datasets.
+        - dataset_configs_test: List of configurations for different datasets.
         - split: Specifies the data split (train/val/test).
         - args: Additional arguments.
         - unit_length: Length of the units for data processing.
@@ -83,7 +85,6 @@ class HandDatasetVQ(data.Dataset):
             self.maxdata = 1e10
 
         self.args = args
-        self.dataset_configs = dataset_configs
         self.task_path = task_path
         # self.unit_length = unit_length
         self.stage = stage
@@ -108,7 +109,15 @@ class HandDatasetVQ(data.Dataset):
         self.data_dict = {}
         self.metadata = []
         # Load each dataset based on its type from the configuration
-        for config in dataset_configs:
+        if split == 'test':
+            dataset_configs_selected = dataset_configs_test
+        else:
+            dataset_configs_selected = dataset_configs
+        # Dictionary to store data and metadata
+        self.data_dict = {}
+        self.metadata = []
+        # Load each dataset based on its type from the configuration
+        for config in dataset_configs_selected:
             # dataset_name = config.get("type")
             dataset_name = config.get("name")
             if dataset_name == "amass_h3d":
@@ -426,6 +435,7 @@ class HandDatasetVQ(data.Dataset):
         training_speakers = config.training_speakers
         pose_rep = config.pose_rep
         pose_fps_beat2 = config.pose_fps
+        foot_contact_path = config.foot_contact_path
         
         # Load split rules from CSV file
         split_rule = pd.read_csv(pjoin(data_root, "train_test_split.csv"))
@@ -476,12 +486,12 @@ class HandDatasetVQ(data.Dataset):
             
             # if self.motion_representation == 'rotation':
             #     # Calculate foot contacts using existing function or load from cache
-            #     foot_contacts_path = pjoin(self.data_root_beat2, 'foot_contacts', f_name + '.npy')
+            #     foot_contacts_path = pjoin(self.data_root_beat2, foot_contact_path, f_name + '.npy')
             #     if os.path.exists(foot_contacts_path):
             #         contacts = np.load(foot_contacts_path)
             #     else:
             #         contacts = self.comput_foot_contacts(pose_data)
-            #         os.makedirs(pjoin(self.data_root_beat2, 'foot_contacts'), exist_ok=True)
+            #         os.makedirs(pjoin(self.data_root_beat2, foot_contact_path), exist_ok=True)
             #         np.save(foot_contacts_path, contacts)
             #     # Concatenate foot contacts to pose data
             #     pose_processed = np.concatenate([pose_processed, contacts], axis=1)
@@ -702,6 +712,8 @@ class HandDatasetVQ(data.Dataset):
         # Set up dataset parameters
         self.data_root_amass = data_root
         pose_fps_amass = config.pose_fps
+        pose_rep = config.pose_rep
+        foot_contact_path = config.foot_contact_path
         
         # Load train and test splits from text files
         split_file_train = pjoin(self.data_root_amass, 'train.txt')
@@ -741,16 +753,16 @@ class HandDatasetVQ(data.Dataset):
         for index, file_name in tqdm(enumerate(id_list_amass)):
             try:
                 # Load pose data from aligned AMASS data
-                pose_file = pjoin(self.data_root_amass, 'amass_data_align', file_name+'.npz')
+                pose_file = pjoin(self.data_root_amass, pose_rep, file_name+'.npz')
                 pose_data = np.load(pose_file, allow_pickle=True)
                 
                 # Calculate stride for downsampling to target FPS
-                stride = int(30 / pose_fps_amass)
+                # stride = int(30 / pose_fps_amass)
 
                 # Extract and downsample pose data
-                poses = pose_data["poses"][::stride]
+                poses = pose_data["poses"]
                 n, c = poses.shape[0], poses.shape[1]  # n: number of frames, c: pose dimension
-                # tar_trans = pose_data["trans"][::stride]
+                # tar_trans = pose_data["trans"]
 
                 # Pad betas to 300 dimensions (AMASS uses 16, but we need 300 for SMPLX)
                 padded_betas = np.zeros(300)
@@ -764,12 +776,12 @@ class HandDatasetVQ(data.Dataset):
                 # # if self.select_type == 'full_rot' or self.select_type == 'separate_rot':
                 # if self.motion_representation == 'rotation':
                 #     # Calculate foot contacts for rotation representation
-                #     foot_contacts_path = pjoin(self.data_root_amass, 'foot_contacts', file_name + '.npy')
+                #     foot_contacts_path = pjoin(self.data_root_amass, foot_contact_path, file_name + '.npy')
                 #     if os.path.exists(foot_contacts_path):
                 #         contacts = np.load(foot_contacts_path)
                 #     else:
                 #         contacts = self.comput_foot_contacts(pose_data)
-                #         os.makedirs(pjoin(self.data_root_amass, 'foot_contacts'), exist_ok=True)
+                #         os.makedirs(pjoin(self.data_root_amass, foot_contact_path), exist_ok=True)
                 #         np.save(foot_contacts_path, contacts)
                 #     # Concatenate foot contacts to pose data
                 #     pose_processed = np.concatenate([pose_processed, contacts], axis=1)

@@ -3,7 +3,7 @@ ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu�
 NUM_NODES: 1 # Number of GPU nodes for distributed training
 DEVICE: [0] # Index of gpus eg. [0] or [0,1,2,3,4,5,6,7]
 
-Selected_type: separate_rot  # defaut separate_rot
+Selected_part: separate_rot  # defaut separate_rot
 Representation_type:
   full_h3d:
     ori: beat_smplx_joints
@@ -60,8 +60,15 @@ TEST:
 
 
 METRIC:
-  TYPE: ['']
-
+  TYPE: []
+  
+LOSS:
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_COMMIT: 0.02
+  LAMBDA_CLS: 1.0
+ABLATION:
+  RECONS_LOSS: 'l1_smooth'
 
 model:
   target: lom.models.lom.Language_Motion
@@ -82,7 +89,7 @@ model:
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
-          vae_test_dim: ${Representation_type.${Selected_type}.face.vae_test_dim}  #dynamic
+          vae_test_dim: ${Representation_type.${Selected_part}.face.vae_test_dim}  #dynamic
       vae_hand:
         target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
         params:
@@ -90,7 +97,7 @@ model:
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
-          vae_test_dim: ${Representation_type.${Selected_type}.hand.vae_test_dim}  #dynamic
+          vae_test_dim: ${Representation_type.${Selected_part}.hand.vae_test_dim}  #dynamic
       vae_upper:
         target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
         params:
@@ -98,7 +105,7 @@ model:
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
-          vae_test_dim: ${Representation_type.${Selected_type}.upper.vae_test_dim}  #dynamic
+          vae_test_dim: ${Representation_type.${Selected_part}.upper.vae_test_dim}  #dynamic
       vae_lower:
         target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
         params:
@@ -106,7 +113,7 @@ model:
           code_num: 256
           codebook_size: 256
           vae_quantizer_lambda: 1
-          vae_test_dim: ${Representation_type.${Selected_type}.lower.vae_test_dim}  #dynamic
+          vae_test_dim: ${Representation_type.${Selected_part}.lower.vae_test_dim}  #dynamic
       vae_global:
         target: lom.archs.lom_vq.VAEConvZero
         params:

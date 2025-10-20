@@ -1,6 +1,7 @@
 .idea/
 .vscode/
 .gitignore
+model_files
 model_files/FLAME2020
 model_files/hubert_models
 model_files/pretrained_cpt
@@ -13,3 +14,5 @@ experiments/
 third_party/
 scripts/misc/
 lom/data/mixed_dataset/__pycache__/
+configs/mics/
+mics/

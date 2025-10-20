@@ -22,7 +22,9 @@ DATASET:
     ROOT: /data/datasets/BEAT2/beat_english_v2.0.0 # BEAT2 directory 
     MEAN_STD_PATH: model_files/t2m/
   AMASS:
-    ROOT: /data/datasets/AMASS # AMASS directory 
+    ROOT: /data/datasets/AMASS # AMASS directory
+  AMASS_Mixed:
+    ROOT: /data/datasets/AMASS_p2p # AMASS directory
   LIBRISPEECH:
     ROOT: "/data/datasets/LibriSpeech" # LibriSpeech directory  
   BEAT2_AMASS:

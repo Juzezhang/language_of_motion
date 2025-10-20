@@ -20,7 +20,7 @@ import math
 from fairseq import checkpoint_utils
 from lom.data.mixed_dataset.data_tools import (
     JOINT_MASK_UPPER,
-    JOINT_MASK_HANDS,
+    JOINT_MASK_HAND,
     JOINT_MASK_LOWER,
 )
 import smplx
@@ -200,7 +200,7 @@ def convert_smplx_to_obj_and_render(rec_pose, rec_exps, rec_trans, rec_beta, mes
         reye_pose=rec_pose[:, 72:75],
         )
     vertex_saved = vertices_rec.vertices.cpu().numpy()
-    vertex_saved[:,:,1] *= -1
+    # vertex_saved[:,:,1] *= -1
     np.save(mesh_save_path, vertex_saved)
     mesh_dir = os.path.dirname(mesh_save_path)
     cmd = [
@@ -518,7 +518,7 @@ def main():
     # Hands
     rec_pose_hands = rec_hands.reshape(bs, n, 30, 6)
     rec_pose_hands = rotation_6d_to_axis_angle(rec_pose_hands).reshape(bs * n, 30 * 3)
-    rec_pose_hands_recover = inverse_selection_tensor(rec_pose_hands.cuda(), JOINT_MASK_HANDS, bs * n)
+    rec_pose_hands_recover = inverse_selection_tensor(rec_pose_hands.cuda(), JOINT_MASK_HAND, bs * n)
     
     # Jaw
     rec_pose_jaw = rec_pose_jaw.reshape(bs * n, 6)

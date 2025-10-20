@@ -44,8 +44,8 @@ class Audio2MotionDataset(data.Dataset):
         tiny=False,
         debug=False,
         audio_down = 320,
-        use_cache=True,      # Whether to load data from cache
-        save_cache=True,     # Whether to save processed data to cache
+        use_cache=False,      # Whether to load data from cache
+        save_cache=False,     # Whether to save processed data to cache
         cache_format="pkl",  # Format to use for caching: "h5", "npz", or "pkl"
         **kwargs,
     ):
@@ -59,13 +59,12 @@ class Audio2MotionDataset(data.Dataset):
         self.smplx_2020 = None
 
         # Load each dataset based on its type from the configuration
-        for config in args.datasets:
+        for config in args.datasets_test:
             dataset_type = config.get("name")
             if dataset_type == "BEAT2":
                 self.testing_speakers = config.get('testing_speakers')
                 code_path_audio = config.get("code_path_audio")
                 config_beat2 = config
-
 
         self.args = args
         self.ori_length = self.args.test_length
@@ -209,18 +208,18 @@ class Audio2MotionDataset(data.Dataset):
             code_path = config.get("code_path")
             code_path_audio = config.get("code_path_audio")
             additional_data = config.get("additional_data")
-            training_speakers = config.get("training_speakers")
+            testing_speakers = config.get("testing_speakers")
             # pose_length = config.get("pose_length")
             
             # Format training speakers list in a more readable way
-            if len(training_speakers) > 0:
-                if all(isinstance(x, int) for x in training_speakers):
+            if len(testing_speakers) > 0:
+                if all(isinstance(x, int) for x in testing_speakers):
                     # Check if it's a continuous range
-                    if list(range(min(training_speakers), max(training_speakers) + 1)) == sorted(training_speakers):
-                        speakers_str = f"Speaker_{min(training_speakers)}_{max(training_speakers)}"
+                    if list(range(min(testing_speakers), max(testing_speakers) + 1)) == sorted(testing_speakers):
+                        speakers_str = f"Speaker_{min(testing_speakers)}_{max(testing_speakers)}"
                     else:
                         # For non-continuous ranges, use abbreviated format
-                        speakers_str = f"Speakers_{len(training_speakers)}"
+                        speakers_str = f"Speakers_{len(testing_speakers)}"
                 else:
                     speakers_str = "CustomSpeakers"
             else:

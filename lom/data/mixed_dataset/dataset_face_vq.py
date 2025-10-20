@@ -28,6 +28,7 @@ class FaceDatasetVQ(data.Dataset):
         self,
         args,
         dataset_configs,
+        dataset_configs_test,
         split,
         # unit_length=4,
         # fps=20,
@@ -50,6 +51,7 @@ class FaceDatasetVQ(data.Dataset):
 
         Parameters:
         - dataset_configs: List of configurations for different datasets.
+        - dataset_configs_test: List of configurations for different datasets.
         - split: Specifies the data split (train/val/test).
         - args: Additional arguments.
         - unit_length: Length of the units for data processing.
@@ -73,7 +75,6 @@ class FaceDatasetVQ(data.Dataset):
             self.maxdata = 1e10
 
         self.args = args
-        self.dataset_configs = dataset_configs
         self.task_path = task_path
         # self.unit_length = unit_length
         self.stage = stage
@@ -85,12 +86,16 @@ class FaceDatasetVQ(data.Dataset):
         self.smpl_path = smpl_path  # Store the path for later use if needed
         self.joint_mask_face = JOINT_MASK_FACE
 
-
+        # Load each dataset based on its type from the configuration
+        if split == 'test':
+            dataset_configs_selected = dataset_configs_test
+        else:
+            dataset_configs_selected = dataset_configs
         # Dictionary to store data and metadata
         self.data_dict = {}
         self.metadata = []
         # Load each dataset based on its type from the configuration
-        for config in dataset_configs:
+        for config in dataset_configs_selected:
             # dataset_name = config.get("type")
             dataset_name = config.get("name")
             if dataset_name == "BEAT2":
@@ -400,6 +405,7 @@ class FaceDatasetVQ(data.Dataset):
         training_speakers = config.training_speakers
         pose_rep = config.pose_rep
         pose_fps_beat2 = config.pose_fps
+        foot_contact_path = config.foot_contact_path
         
         # Load split rules from CSV file
         split_rule = pd.read_csv(pjoin(data_root, "train_test_split.csv"))

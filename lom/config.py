@@ -147,7 +147,12 @@ def parse_args(phase="train"):
             required=False,
             help="render",
         )
-
+        group.add_argument(
+            "--upper_path",
+            type=str,
+            required=False,
+            help="upper path",
+        )
     if phase == "render":
         group.add_argument("--npy",
                            type=str,
@@ -205,6 +210,7 @@ def parse_args(phase="train"):
         cfg.DEMO.TASK = params.task
         cfg.TEST.FOLDER = params.out_dir if params.out_dir else cfg.TEST.FOLDER
         cfg.DEMO.RENDER = params.render
+        cfg.DEMO.UPPER_PATH = params.upper_path
         os.makedirs(cfg.TEST.FOLDER, exist_ok=True)
 
     if phase == "render":

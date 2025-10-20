@@ -12,8 +12,7 @@ from lom.config import parse_args
 from lom.data.build_data import build_data
 from lom.models.build_model import build_model
 from lom.utils.logger import create_logger
-from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae, load_pretrained_vae_compositional
-
+from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_lm, load_pretrained_vae_compositional
 
 def print_table(title, metrics, logger=None):
     table = Table(title=title)
@@ -78,6 +77,7 @@ def main():
     trainer = pl.Trainer(
         benchmark=False,
         max_epochs=cfg.TRAIN.END_EPOCH,
+        precision=cfg.TRAIN.PRECISION,
         accelerator=cfg.ACCELERATOR,
         devices=list(range(len(cfg.DEVICE))),
         default_root_dir=cfg.FOLDER_EXP,
@@ -89,14 +89,14 @@ def main():
         callbacks=callbacks,
     )
 
-
     # Strict load vae model
     if OmegaConf.select(cfg.TRAIN, 'PRETRAINED_VQ') is not None or cfg.TEST.CHECKPOINTS_FACE:
         load_pretrained_vae_compositional(cfg, model, logger, phase="test")
 
     # Strict load pretrianed model
     if cfg.TEST.CHECKPOINTS:
-        load_pretrained_without_vqvae(cfg, model, logger)
+        # load_pretrained_without_vqvae(cfg, model, logger, phase="test")
+        load_pretrained_lm(cfg, model, logger, phase="test")
 
 
     metrics = trainer.test(model, datamodule=datamodule)

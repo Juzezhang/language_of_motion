@@ -11,3 +11,5 @@ from .dataset_upper_vq import UpperDatasetVQ
 from .dataset_lower_vq import LowerDatasetVQ
 from .dataset_face_vq import FaceDatasetVQ
 from .dataset_hand_vq import HandDatasetVQ
+from .dataset_global_vq import GlobalDatasetVQ
+from .dataset_mixed_p2p import MixedDatasetP2P

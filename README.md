@@ -18,11 +18,13 @@ Language of Motion (LoM) is a framework that models human motion generation as a
 - [x] Inference code for co-speech gesture generation
 - [x] Tokenizer training code
 - [x] AMASS and LibriSpeech preprocessing code
-- [ ] Evaluation Benchmark results — **ETA:** Next week
+- [x] Evaluation Benchmark results
 - [ ] Text-to-motion Result on rotation format
-- [ ] Language model training code
+- [x] Language model training code
+
 
 ## 🛠️ Environment Setup
+<details>
 
 We use Conda for environment management. Follow these steps to set up the development environment:
 
@@ -82,7 +84,12 @@ This script will:
 2. Verify the Blender Python path
 3. Install all necessary Python packages for rendering
 
+
+</details>
+
 ## 📥 Required Resources
+
+<details>
 
 Please register an account on the [Max Planck Institute for Intelligent Systems (MPI-IS) website](https://smpl-x.is.tue.mpg.de/index.html) to access the necessary SMPLX models. Then download the SMPLX models, Hubert, T5, and T2M metrics computation checkpoints by running the following script:
 
@@ -100,22 +107,37 @@ model_files/
 ├── t2m_evaluators/    # Text-to-Motion evaluation metrics
 └── t5_models/         # T5 language models
 ```
+</details>
 
 ## 📦 Pretrained Models
 
+<details>
+
 Pretrained models are gradually uploading! Visit the [Hugging Face](https://huggingface.co/JuzeZhang/language_of_motion) repository to download them.
+
+</details>
 
 ## 🚀 Quick Start
 
-### Text-to-Motion Generation
+<details>
+<summary><b>Text-to-Motion Generation</b></summary>
+
 ```bash
 python demo.py --cfg configs/demo_text2motion.yaml --text examples/text2motion.txt --task text2motion --render
 ```
-### Co-speech Gesture Generation
+
+</details>
+
+<details>
+<summary><b>Co-speech Gesture Generation</b></summary>
+
 ```bash
 python demo.py --cfg configs/demo_cospeech.yaml --audio examples/2_scott_0_111_111.wav --task cospeech --render
 ```
 After running the demo scripts, the generated motion results (including rendered videos and motion data) will be saved in the `./results` directory. For text-to-motion generation, you'll find the motion sequences in `.npz` format and rendered videos in `.mp4` format. For co-speech gesture generation, the results will include synchronized motion and audio in a single video file.
+
+</details>
+
 
 ## 🗃️ Data Preparation
 
@@ -123,10 +145,8 @@ For detailed instructions on data preparation and preprocessing, please refer to
 
 ## 🔄 Training Pipeline
 
-Our comprehensive training documentation is coming soon! We'll provide detailed instructions for all three stages:
-1. Compositional Motion Tokenization (VQ-VAE Training)
-
-### 1. Compositional Motion Tokenization (VQ-VAE Training)
+<details>
+<summary><b>1. Compositional Motion Tokenization (VQ-VAE Training)</b></summary>
 
 **📖 [Detailed Documentation](./Compositional_Tokenization.md)**
 
@@ -155,22 +175,106 @@ Hand Region:
 python -m train --cfg configs/config_mixed_stage1_vq_hand_256_512_ds4_wo_mesh_lr1e-4.yaml --nodebug
 ```
 
-### 2. Language Model Pretraining
-*Documentation coming soon*
+Global(The compositional tokenizer didn't include any golbal information or global translation, so we still need a global translation predictor, this part are heavliy borrowed from [EMAGE](https://github.com/PantoMatrix/PantoMatrix) ):
+```bash
+python -m train --cfg configs/config_mixed_stage1_vae_global_wo_mesh_lr1e-4.yaml --nodebug
+```
 
-### 3. Task-Specific Fine-tuning  
-*Documentation coming soon*
+Once we finish the compositional tokenizer training, we will get 5 checkpoints for face, hand, upper, lower and global translation. we can convert the whole BEAT2 and AMASS dataset through following;
+```bash
+python -m scripts.get_compositional_motion_code --cfg configs/config_mixed_stage1_vq_compositional.yaml
+```
+> NOTE: Update the following fields in `config_mixed_stage1_vq_compositional.yaml`:
+> - `CHECKPOINTS_FACE`
+> - `CHECKPOINTS_HAND`
+> - `CHECKPOINTS_UPPER`
+> - `CHECKPOINTS_LOWER`
+> - `code_num`
+> - `codebook_size`
+> 
+> Replace them with your own checkpoints.  
+> We also provide pretrained checkpoints on Hugging Face.
+>
+> All checkpoints reported here were trained on AMASS and BEAT2 datasets to ensure stronger performance. If you want to reproduce the result shown in [paper](https://arxiv.org/pdf/2412.10523), please use the checkpoint provided from EMAGE that only trained on beat2 speaker2 only, which is only used for metrics computation to gurantee the fairness with other methods. 
+
+The result will be saved at: #TOKENS_DS4#
+
+Here you can use the provided script to compare the originial sequence and the reconstructed motion.
+```bash
+python -m scripts.inference_compositional_motion_code --cfg configs/config_mixed_stage1_vq_compositional.yaml
+```
+the npz files and rendering result will be generated within the $data_root$/reconstructed_motion_ds4 path.
+
+Audio Tokenizer, in this work we choose Hubert as our audio tokenizer, while we used the original version of Hubert provided [here](), which is uncommon at this stage. We recommand the newer verision of hubert with higher compatibility。
+```bash
+python -m scripts.get_speech_code_beat2 --beat2_root "/path/to/your/beat2"
+```
+
+```bash
+python -m scripts.get_speech_code_librispeech --data_path "/path/to/your/librispeech"
+```
+
+</details>
+
+<details>
+<summary><b>2. Language Model Pretraining</b></summary>
+
+Pretrained on BEAT2 speaker2 only, used exclusively for fair comparison. This version uses tokenizers and datasets trained only on BEAT2 speaker2:
+
+
+```bash
+ python -m train --cfg configs/config_mixed_stage2_speaker2.yaml --nodebug
+```
+
+
+Normal Version - Can be trained on large scale datasets without numerical comparison constraints:
+
+```bash
+ python -m train --cfg configs/config_mixed_stage2.yaml --nodebug
+```
+
+</details>
+
+<details>
+<summary><b>3. Task-Specific Fine-tuning </b></summary>
+
+Text-to-motion
+
+```bash
+ python -m train --cfg configs/config_mixed_stage3_t2m.yaml --nodebug
+```
+
+Audio-to-motion
+
+```bash
+ python -m train --cfg configs/config_mixed_stage3_a2m.yaml --nodebug
+```
+
+
 
 Stay tuned for updates on our training procedures and best practices.
+</details>
+
 
 ## Evaluation
+To evaluate the co-speech metrics, please first update the trained model checkpoint paths in `configs/config_mixed_stage3_a2m.yaml`:
 
-Evaluation metrics and benchmarking result are currently being prepared. Soon, we'll provide:
-- Standardized evaluation scripts for all supported tasks
-- Benchmark results on public datasets
-- Comparison with SOTA methods
+- `TEST.CHECKPOINTS_FACE`
+- `TEST.CHECKPOINTS_HAND` 
+- `TEST.CHECKPOINTS_UPPER`
+- `TEST.CHECKPOINTS_LOWER`
 
-Check back for updates or follow our GitHub repository for notifications.
+Then, run the following command:
+
+```bash
+python -m test --cfg configs/config_mixed_stage3_a2m.yaml
+```
+
+**Note:** The demo checkpoint named "Instruct_Mixed_A2M_LM.ckpt" is provided for visualization purposes only. When training your own model, you will observe performance curves similar to those shown below. However, the results presented in the paper do not represent the optimal performance achievable with this framework.
+
+
+
+
 
 ## 📝 Citation
 

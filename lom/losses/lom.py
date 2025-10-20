@@ -48,11 +48,15 @@ class VAELosses(BaseLosses):
             params['recons-face_loss'] = 1.0
             losses.append("recons-hand_loss")
             params['recons-hand_loss'] = 1.0
+            losses.append("recons-global_loss")
+            params['recons-global_loss'] = 1.0
             # Commitment losses for different body parts
             losses.append("commit-upper_loss")
             params['commit-upper_loss'] = 1.0
             losses.append("commit-lower_loss")
             params['commit-lower_loss'] = 1.0
+            losses.append("commit-global_loss")
+            params['commit-global_loss'] = 1.0
             losses.append("commit-face_loss")
             params['commit-face_loss'] = 1.0
             losses.append("commit-hand_loss")
@@ -120,7 +124,8 @@ class GPTLosses(BaseLosses):
     def __init__(self, cfg, stage, **kwargs):
         # Save the current training stage
         self.stage = stage
-        recons_loss = cfg.LOSS.ABLATION.RECONS_LOSS
+        # recons_loss = cfg.LOSS.ABLATION.RECONS_LOSS
+        recons_loss = cfg.ABLATION.RECONS_LOSS
 
         # Initialize loss components and their parameters
         losses = []

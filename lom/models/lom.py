@@ -59,7 +59,7 @@ class Language_Motion(BaseModel):
         # self.save_hyperparameters(ignore='datamodule', logger=False)
         # self.datamodule = datamodule
         super().__init__()
-        # self.args = cfg.DATASET
+        self.args = cfg.DATASET
         # # new add
         # self.hparams.args = cfg.DATASET
         self.hparams.stage = cfg.TRAIN.STAGE
@@ -87,14 +87,8 @@ class Language_Motion(BaseModel):
             use_pca=False,
             ).eval()
         self.train_batch_size = cfg.TRAIN.BATCH_SIZE
-        self.max_batch_size_smplx = 64
+        self.max_batch_size_smplx = 1024
         # self.batch_size = cfg.TRAIN.BATCH_SIZE
-        # self.flame = FLAME(
-        #     cfg.DATASET.FLAME_PATH, 
-        #     num_expression_coeffs=100, 
-        #     ext='pkl', 
-        #     batch_size=self.max_batch_size_smplx
-        #     ).eval()
 
         # Instantiate modality tokenizer
         for tokenizer in modality_tokenizer:
@@ -145,18 +139,25 @@ class Language_Motion(BaseModel):
                 })
 
             if lm is not None:
-                config_losses = getattr(self.lm, 'losses', None)
-                if config_losses is not None:
-                    # Instantiate the losses
-                    self._losses = torch.nn.ModuleDict({
-                        split: GPTLosses(cfg, stage)
-                        for split in ["losses_train", "losses_test", "losses_val"]
-                    })
-            # else:
+                # Instantiate the losses
+                self._losses = torch.nn.ModuleDict({
+                    split: GPTLosses(cfg, stage)
+                    for split in ["losses_train", "losses_test", "losses_val"]
+                })
+                # config_losses = getattr(self.lm, 'losses', None)
+                # if config_losses is not None:
+                #     # Instantiate the losses
+                #     self._losses = torch.nn.ModuleDict({
+                #         split: GPTLosses(cfg, stage)
+                #         for split in ["losses_train", "losses_test", "losses_val"]
+                #     })
+
+            # if lm is not None:
+            #     # Instantiate the losses
             #     self._losses = torch.nn.ModuleDict({
-            #             split: GPTLosses(cfg, stage)
-            #             for split in ["losses_train", "losses_test", "losses_val"]
-            #         })
+            #         split: GPTLosses(cfg, stage)
+            #         for split in ["losses_train", "losses_test", "losses_val"]
+            #     })
 
 
     def inverse_selection_tensor(self, filtered_t, selection_array, n):
@@ -259,6 +260,12 @@ class Language_Motion(BaseModel):
             audio_token_string = batch["audio"]
             audio_token_string = [f"Based on {audio}, generate a synchronized movement sequence involving both upper, lower, face and hands body." for audio in audio_token_string]
             outputs_face, outputs_hand, outputs_upper, outputs_lower, output_texts = self.lm.generate_direct(input=audio_token_string, do_sample=True)
+            feats_face, feats_hand, feats_upper, feats_lower = self.unify_length(outputs_face, outputs_hand, outputs_upper, outputs_lower, self.test_length)
+
+        elif "upper" in batch:
+            upper_token_string = batch["upper"]
+            upper_token_string = [f"Generate lower body motion: {upper}" for upper in upper_token_string]
+            outputs_face, outputs_hand, outputs_upper, outputs_lower, output_texts = self.lm.generate_direct(input=upper_token_string, do_sample=True)
             feats_face, feats_hand, feats_upper, feats_lower = self.unify_length(outputs_face, outputs_hand, outputs_upper, outputs_lower, self.test_length)
 
         if "text" in batch:
@@ -508,7 +515,7 @@ class Language_Motion(BaseModel):
     def val_a2m_forward(self, batch):
         # Extract data from batch
         face = batch['face']
-        hands = batch['hands']
+        hand = batch['hand']
         lower = batch['lower']
         upper = batch['upper']
         tar_pose_6d = batch["tar_pose"]
@@ -556,9 +563,9 @@ class Language_Motion(BaseModel):
         motion_token_fps = self.motion_fps / self.motion_down
 
         # Calculate rounds and remaining frames
-        roundt = (n - self.args.pre_frames) // (self.args.test_length - self.args.pre_frames)
-        remain = (n - self.args.pre_frames) % (self.args.test_length - self.args.pre_frames)
-        round_l = self.args.test_length - self.args.pre_frames
+        roundt = (n - self.args.pre_frames) // (self.test_length - self.args.pre_frames)
+        remain = (n - self.args.pre_frames) % (self.test_length - self.args.pre_frames)
+        round_l = self.test_length - self.args.pre_frames
 
         # Initialize containers for token indices
         rec_index_all_face = []
@@ -657,7 +664,7 @@ class Language_Motion(BaseModel):
         rec_pose_hands = rec_hands.reshape(bs, n, 30, 6)
         rec_pose_hands = rotation_6d_to_matrix(rec_pose_hands)
         rec_pose_hands = matrix_to_axis_angle(rec_pose_hands).reshape(bs * n, 30 * 3)
-        rec_pose_hands_recover = self.inverse_selection_tensor(rec_pose_hands.cuda(), JOINT_MASK_HANDS, bs * n)
+        rec_pose_hands_recover = self.inverse_selection_tensor(rec_pose_hands.cuda(), JOINT_MASK_HAND, bs * n)
         rec_pose_jaw = rec_pose_jaw.reshape(bs * n, 6)
         rec_pose_jaw = rotation_6d_to_matrix(rec_pose_jaw)
         rec_pose_jaw = matrix_to_axis_angle(rec_pose_jaw).reshape(bs * n, 1 * 3)
@@ -827,7 +834,6 @@ class Language_Motion(BaseModel):
 
         return rs_set
 
-
     # @torch.no_grad()
     def forward_flame(self, exps, jaw, shape, batch_size):
 
@@ -847,8 +853,8 @@ class Language_Motion(BaseModel):
                     jaw_pose=jaw[div_idx*batch_size:(div_idx+1)*batch_size],
                     shape=shape[div_idx*batch_size:(div_idx+1)*batch_size],
                 )
-                output_joints.append(flame_output.joints)
-                output_vertices.append(flame_output.vertices)
+                output_joints.append(flame_output.joints.cpu())
+                output_vertices.append(flame_output.vertices.cpu())
             if r != 0:
                 exps_pad = torch.cat([exps[s*batch_size:s*batch_size+r], torch.zeros((batch_size-r, 100), device=exps.device)], dim=0)
                 jaw_pad = torch.cat([jaw[s*batch_size:s*batch_size+r], torch.zeros((batch_size-r, 3), device=jaw.device)], dim=0)
@@ -859,8 +865,8 @@ class Language_Motion(BaseModel):
                     jaw_pose=jaw_pad,
                     shape=shape_pad,
                 )
-                output_joints.append(flame_output.joints[:r])
-                output_vertices.append(flame_output.vertices[:r])
+                output_joints.append(flame_output.joints[:r].cpu())
+                output_vertices.append(flame_output.vertices[:r].cpu())
         else:
             output_joints = []
             output_vertices = []
@@ -873,15 +879,13 @@ class Language_Motion(BaseModel):
                 jaw_pose=jaw_pad,
                 shape=shape_pad,
             )
-            output_joints.append(flame_output.joints)
-            output_vertices.append(flame_output.vertices)
+            output_joints.append(flame_output.joints[:actual_length].cpu())
+            output_vertices.append(flame_output.vertices[:actual_length].cpu())
 
         output_joints = torch.cat(output_joints, dim=0)
         output_vertices = torch.cat(output_vertices, dim=0)
 
         return output_joints, output_vertices
-
-
 
     # @torch.no_grad()
     def forward_smplx(self, rec_pose, shape, expression, transl, batch_size):
@@ -906,8 +910,8 @@ class Language_Motion(BaseModel):
                     leye_pose=rec_pose[div_idx*batch_size:(div_idx+1)*batch_size, 69:72], 
                     reye_pose=rec_pose[div_idx*batch_size:(div_idx+1)*batch_size, 72:75],
                     )
-                output_joints.append(output_rec.joints[:, :22].reshape(batch_size, 22, 3))
-                output_vertices.append(output_rec.vertices.reshape(batch_size, 10475, 3))
+                output_joints.append(output_rec.joints[:, :22].reshape(batch_size, 22, 3).cpu())
+                output_vertices.append(output_rec.vertices.reshape(batch_size, 10475, 3).cpu())
 
             if r != 0:
                 output_rec = self.smplx(
@@ -924,13 +928,13 @@ class Language_Motion(BaseModel):
                     leye_pose=rec_pose[s*batch_size:s*batch_size+r, 69:72], 
                     reye_pose=rec_pose[s*batch_size:s*batch_size+r, 72:75],
                     )
-                output_joints.append(output_rec.joints[:, :22].reshape(r, 22, 3))
-                output_vertices.append(output_rec.vertices.reshape(r, 10475, 3))
+                output_joints.append(output_rec.joints[:, :22].reshape(r, 22, 3).cpu())
+                output_vertices.append(output_rec.vertices.reshape(r, 10475, 3).cpu())
         else:
             output_joints = []
             output_vertices = []
             output_rec = self.smplx(
-                betas=shape.reshape(batch_size, 300), 
+                betas=shape.reshape(actual_length, 300), 
                 transl=transl, 
                 expression=expression,
                 jaw_pose=rec_pose[:, 66:69], 
@@ -943,8 +947,8 @@ class Language_Motion(BaseModel):
                 leye_pose=rec_pose[:, 69:72], 
                 reye_pose=rec_pose[:, 72:75],
                 )
-            output_joints.append(output_rec.joints[:, :22].reshape(batch_size, 22, 3))
-            output_vertices.append(output_rec.vertices.reshape(batch_size, 10475, 3))
+            output_joints.append(output_rec.joints[:, :22].reshape(actual_length, 22, 3).cpu())
+            output_vertices.append(output_rec.vertices.reshape(actual_length, 10475, 3).cpu())
 
         output_joints = torch.cat(output_joints, dim=0)
         output_vertices = torch.cat(output_vertices, dim=0)
@@ -962,8 +966,6 @@ class Language_Motion(BaseModel):
             lower_dim = self.cfg.model.params.modality_tokenizer.vae_lower.params.vae_test_dim
 
             net_out_lower = self.vae_lower(tar_lower[..., :lower_dim])
-            tar_global = tar_lower.clone()
-            tar_global[:, :, 54:57] *= 0.0
             # net_out_global = self.vae_global(tar_global)
             rec_lower = net_out_lower["rec_pose"]
             # rec_global = net_out_global["rec_pose"]
@@ -1028,6 +1030,102 @@ class Language_Motion(BaseModel):
                 # "tar_trans":tar_trans,
                 "recons-lower_loss": loss_lower,
                 "commit-lower_loss": net_out_lower["embedding_loss"],
+                "length": lengths  # Use the computed lengths
+            }
+
+        elif self.hparams.Selected_part == 'lower_global':
+
+            tar_beta, tar_lower, tar_trans = [
+                batch[key] for key in ["shape", "lower", "trans"]
+            ]
+
+            tar_trans_vel_x = estimate_linear_velocity(tar_trans[:, :, 0:1], dt=1/self.motion_fps)
+            tar_trans_vel_z = estimate_linear_velocity(tar_trans[:, :, 2:3], dt=1/self.motion_fps)
+
+            lower_dim = self.cfg.model.params.modality_tokenizer.vae_lower.params.vae_test_dim
+
+            net_out_lower = self.vae_lower(tar_lower[..., :lower_dim])
+            # net_out_global = self.vae_global(tar_global)
+            rec_lower = net_out_lower["rec_pose"]
+            # rec_global = net_out_global["rec_pose"]
+            bs = tar_lower.shape[0]
+            n = min(tar_lower.shape[1], rec_lower.shape[1])
+            rec_lower = rec_lower[:,:n]
+
+
+            tar_lower = tar_lower[:,:n]
+            # tar_pose = tar_pose[:,:n]
+            tar_beta = tar_beta[:,:n]
+            # tar_trans = tar_trans[:,:n]
+
+            rec_trans = rec_lower[:, :, 54:57]
+            rec_x_trans = velocity2position(rec_trans[:, :, 0:1], 1/self.motion_fps, tar_trans[:, 0, 0:1])
+            rec_z_trans = velocity2position(rec_trans[:, :, 2:3], 1/self.motion_fps, tar_trans[:, 0, 2:3])
+            rec_y_trans = rec_trans[:,:,1:2]
+            rec_xyz_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
+            rec_contact = rec_lower[:, :, 57:]
+            tar_contact = tar_lower[:, :, 57:]
+
+            rec_pose = self.inverse_selection_tensor_full_body_6D_from_lower(rec_lower[:,:,:54].reshape(bs * n, 9 * 6), JOINT_MASK_LOWER_6D, n*bs)
+            tar_pose = self.inverse_selection_tensor_full_body_6D_from_lower(tar_lower[:,:,:54].reshape(bs * n, 9 * 6), JOINT_MASK_LOWER_6D, n*bs)
+            rec_pose_aa = rotation_6d_to_axis_angle(rec_pose.reshape(bs * n, 55, 6)).reshape(bs * n, 55 * 3)
+            tar_pose_aa = rotation_6d_to_axis_angle(tar_pose.reshape(bs * n, 55, 6)).reshape(bs * n, 55 * 3)
+
+            if self.cfg.TRAIN.LOSS_MESH:
+                    
+                vertices_rec = self.smplx(
+                    betas=tar_beta.reshape(bs*n, 300), 
+                    transl=torch.zeros((bs*n, 3), device=rec_pose_aa.device), 
+                    # expression=rec_exps.reshape(bs*n, 100),
+                    expression = torch.zeros((bs*n, 100), device=rec_pose_aa.device),
+                    jaw_pose=rec_pose_aa[:, 66:69], 
+                    global_orient=rec_pose_aa[:,:3], 
+                    body_pose=rec_pose_aa[:,3:21*3+3], 
+                    left_hand_pose=rec_pose_aa[:,25*3:40*3], 
+                    right_hand_pose=rec_pose_aa[:,40*3:55*3], 
+                    return_verts=True,
+                    return_joints=True,
+                    leye_pose=tar_pose_aa[:, 69:72], 
+                    reye_pose=tar_pose_aa[:, 72:75],
+                    )
+                vertices_tar = self.smplx(
+                    betas=tar_beta.reshape(bs*n, 300), 
+                    transl=torch.zeros((bs*n, 3), device=rec_pose_aa.device), 
+                    # expression=tar_exps.reshape(bs*n, 100), 
+                    expression = torch.zeros((bs*n, 100), device=rec_pose_aa.device),
+                    jaw_pose=tar_pose_aa[:, 66:69], 
+                    global_orient=tar_pose_aa[:,:3], 
+                    body_pose=tar_pose_aa[:,3:21*3+3], 
+                    left_hand_pose=tar_pose_aa[:,25*3:40*3], 
+                    right_hand_pose=tar_pose_aa[:,40*3:55*3], 
+                    return_verts=True,
+                    return_joints=True,
+                    leye_pose=tar_pose_aa[:, 69:72], 
+                    reye_pose=tar_pose_aa[:, 72:75],
+                    )
+            else:
+                vertices_rec = None
+                vertices_tar = None
+
+            loss_lower = self.lower_loss(rec_lower, tar_lower, self.cfg.TRAIN.LOSS_6D, vertices_rec, vertices_tar, self.cfg.TRAIN.LOSS_MESH)
+            loss_global = self.global_loss(rec_xyz_trans, rec_trans, tar_trans, tar_trans_vel_x, tar_trans_vel_z, rec_contact, tar_contact)
+
+            commit_loss = torch.tensor(0.0, device=tar_trans.device)
+
+            # Get lengths if available, otherwise use full sequence length
+            lengths = batch.get("motion_len", None)
+
+            rs_set = {
+                "tar_lower":tar_lower,
+                "rec_lower":rec_lower,
+                "tar_global":tar_trans,
+                "rec_global":rec_xyz_trans,
+                "tar_beta":tar_beta,
+                # "tar_trans":tar_trans,
+                "recons-lower_loss": loss_lower,
+                "commit-lower_loss": net_out_lower["embedding_loss"],
+                "recons-global_loss": loss_global,
+                "commit-global_loss": commit_loss,
                 "length": lengths  # Use the computed lengths
             }
 
@@ -1099,7 +1197,6 @@ class Language_Motion(BaseModel):
                 "commit-upper_loss": net_out_upper["embedding_loss"],
                 "length": lengths  # Use the computed lengths
             }
-
 
         elif self.hparams.Selected_part == 'hand':
 
@@ -1226,6 +1323,45 @@ class Language_Motion(BaseModel):
                 "commit-face_loss": commit_loss,
                 "length": lengths  # Use the computed lengths
             }
+
+        elif self.hparams.Selected_part == 'global':
+            tar_beta, tar_lower, tar_trans = [
+                batch[key] for key in ["shape", "lower", "trans"]
+            ]
+
+            # global_dim = self.cfg.model.params.modality_tokenizer.vae_global.params.vae_test_dim
+            tar_trans_vel_x = estimate_linear_velocity(tar_trans[:, :, 0:1], dt=1/self.motion_fps)
+            tar_trans_vel_z = estimate_linear_velocity(tar_trans[:, :, 2:3], dt=1/self.motion_fps)
+            # rec_lower2global = matrix_to_rotation_6d(rec_pose_lower.clone()).reshape(bs, n, 9 * 6)
+
+            to_global = tar_lower.clone()
+            to_global[:, :, 54:] = 0.0
+
+            net_out_global = self.vae_global(to_global)
+            rec_global = net_out_global["rec_pose"]
+            rec_trans = rec_global[:, :, 54:57]
+            rec_x_trans = velocity2position(rec_trans[:, :, 0:1], 1/self.motion_fps, tar_trans[:, 0, 0:1])
+            rec_z_trans = velocity2position(rec_trans[:, :, 2:3], 1/self.motion_fps, tar_trans[:, 0, 2:3])
+            rec_y_trans = rec_trans[:,:,1:2]
+            rec_xyz_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
+            rec_contact = rec_global[:, :, 57:]
+            tar_contact = tar_lower[:, :, 57:]
+
+            loss_global = self.global_loss(rec_xyz_trans, rec_trans, tar_trans, tar_trans_vel_x, tar_trans_vel_z, rec_contact, tar_contact)
+
+            # Extract embedding loss for monitoring
+            commit_loss = torch.tensor(0.0, device=tar_trans.device)
+            # Get lengths if available, otherwise use full sequence length
+            lengths = batch.get("motion_len", None)
+
+            rs_set = {
+                "tar_global":tar_trans,
+                "rec_global":rec_xyz_trans,
+                "recons-global_loss": loss_global,
+                "commit-global_loss": commit_loss,
+                "length": lengths  # Use the computed lengths
+            }
+        
         elif self.hparams.Selected_part == 'full_rot':
             
             raise NotImplementedError("Not implemented")
@@ -1273,10 +1409,49 @@ class Language_Motion(BaseModel):
             tar_pose_aa = rotation_6d_to_axis_angle(tar_pose.reshape(bs * n, 55, 6)).reshape(bs * n, 55 * 3)
             rec_joints, rec_vertices = self.forward_smplx(rec_pose_aa, tar_beta, torch.zeros((bs*n, 100), device=rec_pose_aa.device), torch.zeros((bs*n, 3), device=rec_pose_aa.device), batch_size=self.max_batch_size_smplx)
             tar_joints, tar_vertices = self.forward_smplx(tar_pose_aa, tar_beta, torch.zeros((bs*n, 100), device=tar_pose_aa.device), torch.zeros((bs*n, 3), device=tar_pose_aa.device), batch_size=self.max_batch_size_smplx)
+            # Get lengths if available, otherwise use full sequence length
+            lengths = batch.get("motion_len", None)
+            rs_set = {
+                "rec_joints": rec_joints.reshape(bs, n, 22, 3),
+                "tar_joints": tar_joints.reshape(bs, n, 22, 3),
+                "rec_vertices": rec_vertices.reshape(bs, n, 10475, 3),
+                "tar_vertices": tar_vertices.reshape(bs, n, 10475, 3),
+                "length": lengths  # Use the computed lengths
+            }
+            return rs_set
+        
+        elif self.hparams.Selected_part == 'lower_global':
+            self.vae_lower.eval()
+            tar_beta, tar_lower, tar_trans = [
+                batch[key] for key in ["shape", "lower", "trans"]
+            ]
+            lower_dim = self.cfg.model.params.modality_tokenizer.vae_lower.params.vae_test_dim
+            net_out_lower = self.vae_lower(tar_lower[..., :lower_dim])
+            rec_lower = net_out_lower["rec_pose"]
+            bs = tar_lower.shape[0]
+            n = min(tar_lower.shape[1], rec_lower.shape[1])
+            rec_lower = rec_lower[:,:n]
+            tar_lower = tar_lower[:,:n]
+            tar_beta = tar_beta[:,:n].reshape(bs*n, 300)
+            tar_trans = tar_trans[:,:n]
+            rec_pose = self.inverse_selection_tensor_full_body_6D_from_lower(rec_lower[:,:,:54].reshape(bs * n, 9 * 6), JOINT_MASK_LOWER_6D, n*bs)
+            tar_pose = self.inverse_selection_tensor_full_body_6D_from_lower(tar_lower[:,:,:54].reshape(bs * n, 9 * 6), JOINT_MASK_LOWER_6D, n*bs)
+            rec_pose_aa = rotation_6d_to_axis_angle(rec_pose.reshape(bs * n, 55, 6)).reshape(bs * n, 55 * 3)
+            tar_pose_aa = rotation_6d_to_axis_angle(tar_pose.reshape(bs * n, 55, 6)).reshape(bs * n, 55 * 3)
+            rec_joints, rec_vertices = self.forward_smplx(rec_pose_aa, tar_beta, torch.zeros((bs*n, 100), device=rec_pose_aa.device), torch.zeros((bs*n, 3), device=rec_pose_aa.device), batch_size=self.max_batch_size_smplx)
+            tar_joints, tar_vertices = self.forward_smplx(tar_pose_aa, tar_beta, torch.zeros((bs*n, 100), device=tar_pose_aa.device), torch.zeros((bs*n, 3), device=tar_pose_aa.device), batch_size=self.max_batch_size_smplx)
+
+            rec_trans = rec_lower[:, :, 54:57]
+            rec_x_trans = velocity2position(rec_trans[:, :, 0:1], 1/self.motion_fps, tar_trans[:, 0, 0:1])
+            rec_z_trans = velocity2position(rec_trans[:, :, 2:3], 1/self.motion_fps, tar_trans[:, 0, 2:3])
+            rec_y_trans = rec_trans[:,:,1:2]
+            rec_xyz_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
 
             # Get lengths if available, otherwise use full sequence length
             lengths = batch.get("motion_len", None)
             rs_set = {
+                "tar_trans": tar_trans,
+                "rec_trans": rec_xyz_trans,
                 "rec_joints": rec_joints.reshape(bs, n, 22, 3),
                 "tar_joints": tar_joints.reshape(bs, n, 22, 3),
                 "rec_vertices": rec_vertices.reshape(bs, n, 10475, 3),
@@ -1378,30 +1553,63 @@ class Language_Motion(BaseModel):
             }
             return rs_set
 
+
+        elif self.hparams.Selected_part == 'global':
+
+            tar_beta, tar_lower, tar_trans = [
+                batch[key] for key in ["shape", "lower", "trans"]
+            ]
+            to_global = tar_lower.clone()
+            to_global[:, :, 54:] = 0.0
+            net_out_global = self.vae_global(to_global)
+            rec_global = net_out_global["rec_pose"]
+            rec_trans = rec_global[:, :, 54:57]
+            rec_x_trans = velocity2position(rec_trans[:, :, 0:1], 1/self.motion_fps, tar_trans[:, 0, 0:1])
+            rec_z_trans = velocity2position(rec_trans[:, :, 2:3], 1/self.motion_fps, tar_trans[:, 0, 2:3])
+            rec_y_trans = rec_trans[:,:,1:2]
+            rec_xyz_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
+            # Get lengths if available, otherwise use full sequence length
+            lengths = batch.get("motion_len", None)
+            rs_set = {
+                "tar_trans": tar_trans,
+                "rec_trans": rec_xyz_trans,
+                "length": lengths  # Use the computed lengths
+            }
+            return rs_set
+        
         elif self.hparams.Selected_part == 'compositional':
             self.vae_face.eval()
             self.vae_hand.eval()
             self.vae_upper.eval()
             self.vae_lower.eval()
-            tar_beta, tar_lower, tar_face, tar_hand, tar_upper = [
-                batch[key] for key in ["shape", "lower", "face", "hand", "upper"]
+            tar_beta, tar_lower, tar_face, tar_hand, tar_upper, tar_trans = [
+                batch[key] for key in ["shape", "lower", "face", "hand", "upper", "trans"]
             ]
             lower_dim = self.cfg.model.params.modality_tokenizer.vae_lower.params.vae_test_dim
             face_dim = self.cfg.model.params.modality_tokenizer.vae_face.params.vae_test_dim
             hand_dim = self.cfg.model.params.modality_tokenizer.vae_hand.params.vae_test_dim
             upper_dim = self.cfg.model.params.modality_tokenizer.vae_upper.params.vae_test_dim
-
+            to_global = tar_lower.clone()
+            to_global[:, :, 54:] = 0.0
             net_out_face = self.vae_face(tar_face[..., :face_dim])
             net_out_hand = self.vae_hand(tar_hand[..., :hand_dim])
             net_out_upper = self.vae_upper(tar_upper[..., :upper_dim])
             net_out_lower = self.vae_lower(tar_lower[..., :lower_dim])
+            net_out_global = self.vae_global(to_global)
 
             rec_face = net_out_face["rec_pose"]
             rec_hand = net_out_hand["rec_pose"]
             rec_upper = net_out_upper["rec_pose"]
             rec_lower = net_out_lower["rec_pose"]
+            rec_global = net_out_global["rec_pose"]
             rec_lower = rec_lower[..., :lower_dim]
             tar_lower = tar_lower[..., :lower_dim]
+            rec_trans = rec_global[:, :, 54:57]
+            rec_x_trans = velocity2position(rec_trans[:, :, 0:1], 1/self.motion_fps, tar_trans[:, 0, 0:1])
+            rec_z_trans = velocity2position(rec_trans[:, :, 2:3], 1/self.motion_fps, tar_trans[:, 0, 2:3])
+            rec_y_trans = rec_trans[:,:,1:2]
+            rec_xyz_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
+
 
             # Get the lengths if available, otherwise use full sequence length
             lengths = batch.get("motion_len", None)
@@ -1421,6 +1629,8 @@ class Language_Motion(BaseModel):
             tar_pose_jaw_aa = rotation_6d_to_axis_angle(tar_pose_jaw.reshape(-1, 6)).reshape(-1, 3)
             tar_hand = tar_hand[:,:n]   
             tar_upper = tar_upper[:,:n]
+            rec_xyz_trans = rec_xyz_trans[:,:n]
+            tar_trans = tar_trans[:,:n]
             
             tar_beta = tar_beta[:,:n].reshape(bs*n, 300)
             rec_pose = self.inverse_selection_tensor_full_body_6D(rec_pose_jaw.reshape(bs * n, 6), rec_hand.reshape(bs * n, 30 * 6), rec_lower.reshape(bs * n, 9 * 6), rec_upper.reshape(bs * n, 13 * 6), JOINT_MASK_FACE_6D, JOINT_MASK_HAND_6D, JOINT_MASK_LOWER_6D, JOINT_MASK_UPPER_6D, n*bs)
@@ -1436,6 +1646,8 @@ class Language_Motion(BaseModel):
             # Get lengths if available, otherwise use full sequence length
             lengths = batch.get("motion_len", None)
             rs_set = {
+                "rec_trans": rec_xyz_trans,
+                "tar_trans": tar_trans,
                 "rec_joints": rec_joints.reshape(bs, n, 22, 3),
                 "tar_joints": tar_joints.reshape(bs, n, 22, 3),
                 "rec_vertices": rec_vertices.reshape(bs, n, 10475, 3),
@@ -1529,6 +1741,12 @@ class Language_Motion(BaseModel):
                             tar_vertices=rs_set["tar_vertices_face"],
                             lengths=rs_set['length']  # Pass the computed lengths
                         )
+                    elif metric == "GlobalMetrics":
+                        getattr(self.metrics, metric).update(
+                            rec_trans=rs_set["rec_trans"],
+                            tar_trans=rs_set["tar_trans"],
+                            lengths=rs_set['length']  # Pass the computed lengths
+                        )
                     elif metric == "H3DMetrics":
                         # Convert poses to joint positions first
                         rec_joints = self.feats2joints(rs_set["rec_pose"])
@@ -1539,7 +1757,8 @@ class Language_Motion(BaseModel):
                             lengths=rs_set['length']  # Pass the computed lengths
                         )
 
-            elif self.hparams.stage in ["lm_instruct", "lm_pretrain", "lm_rl"]:
+            # elif self.hparams.stage in ["lm_instruct", "lm_pretrain", "lm_rl"]:
+            elif self.hparams.stage in ["lm_instruct", "lm_rl"]:
                 if self.hparams.task == "t2m":
                     rs_set = self.val_t2m_forward(batch)
                 elif self.hparams.task == "m2t":
@@ -1553,7 +1772,7 @@ class Language_Motion(BaseModel):
                 elif self.hparams.task in ["m2e"]:
                     rs_set = self.val_m2e_forward(batch)
 
-            if self.hparams.task not in ["m2t", "m2e", "a2t"] and self.hparams.stage not in ["vae", "vq", 'vqvae']:
+            if self.hparams.task not in ["m2t", "m2e", "a2t"] and self.hparams.stage not in ["vae", "vq", 'vqvae', "lm_pretrain"]:
                 # MultiModality evaluation sperately
                 if self.trainer.datamodule.is_mm:
                     metrics_dicts = ['MMMetrics']

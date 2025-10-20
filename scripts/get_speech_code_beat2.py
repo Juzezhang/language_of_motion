@@ -12,20 +12,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Argument parsing
 parser = argparse.ArgumentParser('exp_motion command line tools')
-# parser.add_argument('--wav_folder', type=str, required=True, help="Path to the folder containing .wav files")
-parser.add_argument('--wav_folder', type=str, default="/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/beat2_original/beat_v2.0.0/beat_english_v2.0.0/wave16k", help="Path to the folder containing .wav files")
-parser.add_argument('--kmeans_path', type=str, default="../../checkpoint/hubert_base_ls960_L9_km500.bin",
+parser.add_argument('--beat2_root', type=str, default="/data/datasets/BEAT2/beat_english_v2.0.0", help="Path to the BEAT2 root")
+parser.add_argument('--wav_folder', type=str, default="wave16k", help="Path to the folder containing .wav files")
+parser.add_argument('--hubert_checkpoint', type=str, default="model_files/hubert_models/hubert_base_ls960.pt", help="Path to the HuBERT checkpoint")
+parser.add_argument('--kmeans_path', type=str, default="model_files/hubert_models/hubert_base_ls960_L9_km500.bin",
                     help="Path to the K-means model")
-parser.add_argument('--output_dir', type=str, default="Quantized_Wav_Hubert",
+parser.add_argument('--output_dir', type=str, default="audios_token",
                     help="Directory to save the quantized outputs")
 args = parser.parse_args()
 
-wav_folder = args.wav_folder
+beat2_root = args.beat2_root
+hubert_checkpoint = args.hubert_checkpoint
 kmeans_path = args.kmeans_path
-output_dir = args.output_dir
+output_dir = join(beat2_root, args.output_dir)
+wav_dir = join(beat2_root, args.wav_folder)
 
 # Load HuBERT pre-trained model
-hubert_checkpoint = '../../checkpoint/hubert_base_ls960.pt'
 models, cfg, task = checkpoint_utils.load_model_ensemble_and_task([hubert_checkpoint])
 model = models[0]
 model.eval()
@@ -33,7 +35,6 @@ model = model.to(device)  # Move model to GPU if available
 
 # Load K-means model
 kmeans_model = joblib.load(kmeans_path)
-
 
 # Function to tokenize audio using HuBERT
 def tokenize_audio(model, audio):
@@ -55,9 +56,9 @@ def quantize_features(features, kmeans_model):
 os.makedirs(output_dir, exist_ok=True)
 
 # Process each .wav file in the provided folder
-for wav_file in tqdm(os.listdir(wav_folder)):
+for wav_file in tqdm(os.listdir(wav_dir)):
     if wav_file.endswith(".wav"):
-        wav_path = join(wav_folder, wav_file)
+        wav_path = join(wav_dir, wav_file)
 
         # Load the wav file
         waveform, sample_rate = torchaudio.load(wav_path)
@@ -72,8 +73,7 @@ for wav_file in tqdm(os.listdir(wav_folder)):
 
         # Save the quantized indices
         output_path = join(output_dir, wav_file.replace(".wav", ".npy"))
-        # np.save(output_path, quantized_indices)
-
+        np.save(output_path, quantized_indices)
         # print(f"Processed and saved tokens for {wav_file}")
 
 print("Processing complete!")

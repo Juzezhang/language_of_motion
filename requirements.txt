@@ -29,6 +29,7 @@ bert_score
 jiwer
 ConfigArgParse
 opencv_python
+loguru
 
 # Visualization dependencies
 smplx==0.1.28

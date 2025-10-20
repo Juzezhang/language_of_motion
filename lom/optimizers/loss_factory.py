@@ -165,7 +165,6 @@ class UpperLoss(nn.Module):
             rec_upper = matrix_to_axis_angle(rec_upper.reshape(bs, n, 13, 3, 3)).reshape(bs*n, j*3)
             tar_upper = matrix_to_axis_angle(tar_upper.reshape(bs, n, 13, 3, 3)).reshape(bs*n, j*3)
 
-
         if loss_mesh:
             vectices_loss = self.vectices_loss(vertices_rec['vertices'], vertices_tar['vertices'])
             vertices_vel_loss = self.vel_loss(vertices_rec['vertices'][:, 1:] - vertices_rec['vertices'][:, :-1], vertices_tar['vertices'][:, 1:] - vertices_tar['vertices'][:, :-1])
@@ -237,7 +236,6 @@ class LowerLoss(nn.Module):
         if Loss_6D == True:
             rec_lower = rotation_6d_to_axis_angle(rec_lower.reshape(bs, n, 9, 6)).reshape(bs*n, j*3)
             tar_lower = rotation_6d_to_axis_angle(tar_lower.reshape(bs, n, 9, 6)).reshape(bs*n, j*3)
-
         else:
             rec_lower = matrix_to_axis_angle(rec_lower.reshape(bs, n, 9, 3, 3)).reshape(bs*n, j*3)
             tar_lower = matrix_to_axis_angle(tar_lower.reshape(bs, n, 9, 3, 3)).reshape(bs*n, j*3)
@@ -284,7 +282,7 @@ class GlobalLoss(nn.Module):
         self.pose_fps = pose_fps
 
     def inverse_selection_tensor(self, filtered_t, selection_array, n):
-    # Create a zero array with shape n*165
+        # Create a zero array with shape n*165
         selection_array = torch.from_numpy(selection_array).to(filtered_t.device)
         original_shape_t = torch.zeros((n, 165)).to(filtered_t.device)
         
@@ -297,109 +295,28 @@ class GlobalLoss(nn.Module):
             
         return original_shape_t
     
-    
-    def forward(self, rec_global, tar_global, tar_betas, tar_trans, Loss_6D, vertices_rec, vertices_tar):
+    def forward(self, rec_xyz_trans, rec_trans, tar_trans, tar_trans_vel_x, tar_trans_vel_z, rec_contact, tar_contact):
 
-        bs, n = tar_global.shape[0], min(tar_global.shape[1], rec_global.shape[1])
-        j = 9
-        # tar_betas = torch.tile(tar_betas, (n, 1))
-        tar_contact = tar_global[:, :n, j*6+3:j*6+7]
-        rec_contact = rec_global[:, :n, j*6+3:j*6+7]
-        tar_exps = torch.zeros((bs, n, 100)).to(rec_global.device)
-        tar_trans_vel_x = estimate_linear_velocity(tar_trans[:, :, 0:1], dt=1/self.pose_fps)
-        tar_trans_vel_z = estimate_linear_velocity(tar_trans[:, :, 2:3], dt=1/self.pose_fps)
-
+        g_loss_final = 0
         loss_contact = self.vectices_loss(rec_contact, tar_contact)
-
-        rec_trans = rec_global[:, :, j*6:j*6+3]
-        rec_x_trans = velocity2position(rec_trans[:, :, 0:1], 1/self.pose_fps, tar_trans[:, 0, 0:1])
-        rec_z_trans = velocity2position(rec_trans[:, :, 2:3], 1/self.pose_fps, tar_trans[:, 0, 2:3])
-        rec_y_trans = rec_trans[:,:,1:2]
-        rec_xyz_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
-        loss_trans_vel = self.vel_loss(rec_trans[:, :, 0:1], tar_trans_vel_x) \
-        + self.vel_loss(rec_trans[:, :, 2:3], tar_trans_vel_z)
+        g_loss_final += loss_contact 
+        
+        loss_trans_vel = self.vel_loss(rec_trans[:, :, 0:1], tar_trans_vel_x)  + self.vel_loss(rec_trans[:, :, 2:3], tar_trans_vel_z) 
         v3 =  self.vel_loss(rec_trans[:, :, 0:1][:, 1:] - rec_trans[:, :, 0:1][:, :-1], tar_trans_vel_x[:, 1:] - tar_trans_vel_x[:, :-1]) \
         + self.vel_loss(rec_trans[:, :, 2:3][:, 1:] - rec_trans[:, :, 2:3][:, :-1], tar_trans_vel_z[:, 1:] - tar_trans_vel_z[:, :-1]) 
         a3 = self.vel_loss(rec_trans[:, :, 0:1][:, 2:] + rec_trans[:, :, 0:1][:, :-2] - 2 * rec_trans[:, :, 0:1][:, 1:-1], tar_trans_vel_x[:, 2:] + tar_trans_vel_x[:, :-2] - 2 * tar_trans_vel_x[:, 1:-1]) \
         + self.vel_loss(rec_trans[:, :, 2:3][:, 2:] + rec_trans[:, :, 2:3][:, :-2] - 2 * rec_trans[:, :, 2:3][:, 1:-1], tar_trans_vel_z[:, 2:] + tar_trans_vel_z[:, :-2] - 2 * tar_trans_vel_z[:, 1:-1]) 
-        # g_loss_final += 5*v3 
-        # g_loss_final += 5*a3
-        v2 =  self.vel_loss(rec_xyz_trans[:, 1:] - rec_xyz_trans[:, :-1], tar_trans[:, 1:] - tar_trans[:, :-1]) 
-        a2 =  self.vel_loss(rec_xyz_trans[:, 2:] + rec_xyz_trans[:, :-2] - 2 * rec_xyz_trans[:, 1:-1], tar_trans[:, 2:] + tar_trans[:, :-2] - 2 * tar_trans[:, 1:-1]) 
-        # g_loss_final += 5*v2 
-        # g_loss_final += 5*a2 
-        # g_loss_final += loss_trans_vel
-        loss_trans = self.vel_loss(rec_xyz_trans, tar_trans)
-        # g_loss_final += loss_trans
+        g_loss_final += 5*v3 
+        g_loss_final += 5*a3
+        v2 = self.vel_loss(rec_xyz_trans[:, 1:] - rec_xyz_trans[:, :-1], tar_trans[:, 1:] - tar_trans[:, :-1]) 
+        a2 = self.vel_loss(rec_xyz_trans[:, 2:] + rec_xyz_trans[:, :-2] - 2 * rec_xyz_trans[:, 1:-1], tar_trans[:, 2:] + tar_trans[:, :-2] - 2 * tar_trans[:, 1:-1]) 
+        g_loss_final += 5*v2 
+        g_loss_final += 5*a2 
+        g_loss_final += loss_trans_vel
+        loss_trans = self.vel_loss(rec_xyz_trans, tar_trans) 
+        g_loss_final += loss_trans
 
-
-        rec_global = rotation_6d_to_axis_angle(rec_global[..., :54].reshape(bs, n, 9, 6)).reshape(bs*n, j*3)
-        tar_global = rotation_6d_to_axis_angle(tar_global[..., :54].reshape(bs, n, 9, 6)).reshape(bs*n, j*3)
-
-
-        # rec_pose = self.inverse_selection_tensor(rec_global, JOINT_MASK_LOWER, rec_global.shape[0])
-        # tar_pose = self.inverse_selection_tensor(tar_global, JOINT_MASK_LOWER, tar_global.shape[0])
-        # vertices_rec = smplx_func(  
-        #     betas=tar_betas.reshape(bs*n, 300), 
-        #     transl=rec_xyz_trans.reshape(bs*n, 3), 
-        #     expression=tar_exps.reshape(bs*n, 100), 
-        #     jaw_pose=rec_pose[:, 66:69], 
-        #     global_orient=rec_pose[:,:3], 
-        #     body_pose=rec_pose[:,3:21*3+3], 
-        #     left_hand_pose=rec_pose[:,25*3:40*3], 
-        #     right_hand_pose=rec_pose[:,40*3:55*3], 
-        #     return_verts=True,
-        #     return_joints=True,
-        #     leye_pose=tar_pose[:, 69:72], 
-        #     reye_pose=tar_pose[:, 72:75],
-        # )
-        # vertices_tar = smplx_func(
-        #     betas=tar_betas.reshape(bs*n, 300), 
-        #     transl=tar_trans.reshape(bs*n, 3), 
-        #     expression=tar_exps.reshape(bs*n, 100), 
-        #     jaw_pose=tar_pose[:, 66:69], 
-        #     global_orient=tar_pose[:,:3], 
-        #     body_pose=tar_pose[:,3:21*3+3], 
-        #     left_hand_pose=tar_pose[:,25*3:40*3], 
-        #     right_hand_pose=tar_pose[:,40*3:55*3], 
-        #     return_verts=True,
-        #     return_joints=True,
-        #     leye_pose=tar_pose[:, 69:72], 
-        #     reye_pose=tar_pose[:, 72:75],
-        # )  
-        joints_rec = vertices_rec['joints'] + rec_xyz_trans.reshape(bs*n, 3).unsqueeze(dim=1)
-        vert_rec = vertices_rec['vertices'] + rec_xyz_trans.reshape(bs*n, 3).unsqueeze(dim=1)
-        joints_tar = vertices_tar['joints'] + tar_trans.reshape(bs*n, 3).unsqueeze(dim=1)
-        vert_tar = vertices_tar['vertices'] + tar_trans.reshape(bs*n, 3).unsqueeze(dim=1)
-
-        # joints_rec = vertices_rec['joints']
-        joints_rec = joints_rec.reshape(bs, n, -1, 3)
-        vectices_loss = self.vectices_loss(vert_rec, vert_tar)
-        vertices_vel_loss = self.vectices_loss(
-            vert_rec[:, 1:] - vert_rec[:, :-1],
-            vert_tar[:, 1:] - vert_tar[:, :-1])
-        vertices_acc_loss = self.vectices_loss(
-            vert_rec[:, 2:] + vert_rec[:, :-2] - 2 * vert_rec[:, 1:-1],
-            vert_tar[:, 2:] + vert_tar[:, :-2] - 2 * vert_tar[:, 1:-1])
-        foot_idx = [7, 8, 10, 11]
-        # model_contact = rec_global[:, :, j*6+3:j*6+7]
-        # find static indices consistent with model's own predictions
-        static_idx = rec_contact > 0.95  # N x S x 4 
-        model_feet = joints_rec[:, :, foot_idx]  # foot positions (N, S, 4, 3)
-        model_foot_v = torch.zeros_like(model_feet)
-        model_foot_v[:, :-1] = (
-            model_feet[:, 1:, :, :] - model_feet[:, :-1, :, :]
-        )  # (N, S-1, 4, 3)
-        model_foot_v[~static_idx] = 0
-        foot_loss = self.vel_loss(
-            model_foot_v, torch.zeros_like(model_foot_v)
-        )
-
-        final_loss = loss_contact +  5*v3 + 5*a3 + 5*v2 + 5*a2 + loss_trans_vel + loss_trans  + (vectices_loss+5*vertices_vel_loss+5*vertices_acc_loss) + foot_loss*20
-        # loss_trans_related =  5*v3 + 5*a3 + 5*v2 + 5*a2
-
-        return final_loss
-
+        return g_loss_final
 
 # class FaceLoss(nn.Module):
 #     def __init__(self, Is_VQVAE=True):

@@ -56,14 +56,22 @@ EVAL:
   SPLIT: test
 
 TEST:
-  CHECKPOINTS_FACE: ./model_files/pretrained_cpt/lom_vq_new/face/epoch=139.ckpt
-  CHECKPOINTS_HAND: ./model_files/pretrained_cpt/lom_vq_new/hand/epoch=89.ckpt
-  CHECKPOINTS_UPPER: ./model_files/pretrained_cpt/lom_vq_new/upper/epoch=189.ckpt
-  CHECKPOINTS_LOWER: ./model_files/pretrained_cpt/lom_vq_new/lower/epoch=69.ckpt
+  # CHECKPOINTS_FACE: ./model_files/pretrained_cpt/lom_vq_ds_new/face/epoch=409.ckpt
+  # CHECKPOINTS_HAND: ./model_files/pretrained_cpt/lom_vq_ds_new/hand/epoch=439.ckpt
+  # CHECKPOINTS_UPPER: ./model_files/pretrained_cpt/lom_vq_ds_new/upper/epoch=279.ckpt
+  # CHECKPOINTS_LOWER: ./model_files/pretrained_cpt/lom_vq_ds_new/lower/epoch=189.ckpt
+  # CHECKPOINTS_GLOBAL: ./model_files/pretrained_cpt/lom_vq_ds_new/global/epoch=389.ckpt
+
+  CHECKPOINTS_FACE: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_HAND: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_UPPER: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_LOWER: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_GLOBAL: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  
   # CHECKPOINTS: ''
   SPLIT: test
   TEST_LENGTH: 120
-  BATCH_SIZE: 1 # training Batch size
+  BATCH_SIZE: 4 # training Batch size
 
 DATASET:
   motion_representation: "rotation" # "rotation" or "h3d"
@@ -80,13 +88,36 @@ DATASET:
       training_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
       additional_data: True # True or False
       pose_rep: smplxflame_30
-    # - name: "AMASS"
+      foot_contact_path: foot_contacts
+      code_path: "TOKENS_DS4_PaperVersion" # TOKENS_DS4
+    - name: "AMASS"
+      stride: 20
+      pose_length: 64
+      pose_fps: 30
+      pose_rep: amass_data_align
+      foot_contact_path: foot_contacts
+      code_path: "TOKENS_DS4_PaperVersion" # TOKENS_DS4
+  datasets_test:
+    # - name: "BEAT2"
     #   stride: 20
     #   pose_length: 64
     #   pose_fps: 30
+    #   training_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    #   additional_data: True # True or False
+    #   pose_rep: smplxflame_30
+    #   foot_contact_path: foot_contacts
+    #   code_path: "TOKENS_DS4_PaperVersion" # TOKENS_DS4
+    - name: "AMASS"
+      stride: 20
+      pose_length: 64
+      pose_fps: 30
+      pose_rep: amass_data_align
+      foot_contact_path: foot_contacts
+
 
 METRIC:
-  TYPE: ['BodyMetrics', 'FaceMetrics']
+  # TYPE: ['BodyMetrics', 'FaceMetrics', 'GlobalMetrics']
+  TYPE: ['BodyMetrics', 'GlobalMetrics']
   REGION_PATH: model_files/FLAME2020/FLAME_masks.pkl
   TEMPLATE_PATH: model_files/face_template_no_global.npz
 
@@ -115,7 +146,7 @@ model:
         params:
           vae_layer: 3
           code_num: 256
-          codebook_size: 512
+          codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_part}.face.vae_test_dim}  #dynamic
       vae_hand:
@@ -123,7 +154,7 @@ model:
         params:
           vae_layer: 3
           code_num: 256
-          codebook_size: 512
+          codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_part}.hand.vae_test_dim}  #dynamic
       vae_upper:
@@ -131,30 +162,25 @@ model:
         params:
           vae_layer: 3
           code_num: 256
-          codebook_size: 512
+          codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_part}.upper.vae_test_dim}  #dynamic
       vae_lower:
         target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
         params:
           vae_layer: 3
-          code_num: 128
-          codebook_size: 512
+          code_num: 256
+          codebook_size: 256
           vae_quantizer_lambda: 1
           vae_test_dim: ${Representation_type.${Selected_part}.lower.vae_test_dim}  #dynamic
-      # vae_global:
-      #   target: lom.archs.lom_vq.VAEConvZero
-      #   params:
-      #     vae_layer: 4
-      #     code_num: 256
-      #     codebook_size: 256
-      #     vae_quantizer_lambda: 1
-      #     vae_test_dim: 61
-
-
-
-
-
+      vae_global:
+        target: lom.archs.lom_vq.VAEConvZero
+        params:
+          vae_layer: 4
+          code_num: 256
+          codebook_size: 256
+          vae_quantizer_lambda: 1
+          vae_test_dim: 61
 
 
 LOGGER:

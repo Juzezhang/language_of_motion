@@ -3,8 +3,8 @@ params:
   model_type: t5
   model_path: ./model_files/t5_models/flan-t5-base
   stage: ${TRAIN.STAGE}
-  motion_codebook_size: ${model.params.motion_codebook_size}
-  audio_codebook_size: ${model.params.audio_codebook_size}
+  motion_codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+  audio_codebook_size: 500
   flash_attention: True   ## True on paper
   ablation: ${ABLATION}
   max_length: 512

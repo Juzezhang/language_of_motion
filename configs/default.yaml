@@ -48,7 +48,6 @@ model:
     task: 't2m'
     # lm: ${lm.default}
     # motion_vae: ${vq.default}
-
     # Related parameters
     stage: ${TRAIN.STAGE}
     debug: ${DEBUG}
@@ -71,8 +70,8 @@ LOSS:
   LAMBDA_VELOCITY: 0.5 # Lambda for velocity losses
   LAMBDA_COMMIT: 0.02 # Lambda for commitment losses
 
-  ABLATION:
-    RECONS_LOSS: 'l1_smooth'
+ABLATION:
+  RECONS_LOSS: 'l1_smooth'
 
 METRIC:
   TASK: 't2m'

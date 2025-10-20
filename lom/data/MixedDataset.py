@@ -5,7 +5,7 @@ from os.path import join as pjoin
 from .mixed_dataset.utils.word_vectorizer import WordVectorizer
 from .mixed_dataset.scripts.motion_process import (process_file, recover_from_ric)
 from . import BASEDataModule
-from .mixed_dataset import MixedDatasetVQ, MixedDatasetCB, Audio2MotionDataset, UpperDatasetVQ, LowerDatasetVQ, FaceDatasetVQ, HandDatasetVQ
+from .mixed_dataset import MixedDatasetVQ, MixedDatasetCB, Audio2MotionDataset, UpperDatasetVQ, LowerDatasetVQ, FaceDatasetVQ, HandDatasetVQ, GlobalDatasetVQ, MixedDatasetP2P
 from .utils import lom_collate
 
 
@@ -20,9 +20,11 @@ class MixedDataModule(BASEDataModule):
         self.njoints = 55
 
         dataset_configs = cfg.DATASET.datasets
+        dataset_configs_test = cfg.DATASET.datasets_test
         # # Path to the dataset
         self.hparams.args = cfg.DATASET
         self.hparams.dataset_configs=dataset_configs
+        self.hparams.dataset_configs_test=dataset_configs_test
         self.hparams.debug = cfg.DEBUG
         self.hparams.stage = cfg.TRAIN.STAGE
         self.hparams.audio_down = cfg.model.params.modality_setup.params.audio_down
@@ -42,12 +44,10 @@ class MixedDataModule(BASEDataModule):
             self.hparams.mean_eval = np.load(pjoin(dis_data_root_eval, "mean.npy"))
             self.hparams.std_eval = np.load(pjoin(dis_data_root_eval, "std.npy"))
         if cfg.TRAIN.STAGE == "vae" or cfg.TRAIN.STAGE == "vqvae" or cfg.TRAIN.STAGE == "token":
-            # self.Dataset = MixedDatasetVQ
-            # self.DatasetEval = MixedDatasetVQ
             if cfg.Selected_part == 'upper':
                 self.Dataset = UpperDatasetVQ
                 self.DatasetEval = UpperDatasetVQ
-            elif cfg.Selected_part == 'lower' or cfg.Selected_part == 'lower_54':
+            elif cfg.Selected_part == 'lower' or cfg.Selected_part == 'lower_54' or cfg.Selected_part == 'lower_global':
                 self.Dataset = LowerDatasetVQ
                 self.DatasetEval = LowerDatasetVQ
             elif cfg.Selected_part == 'face':
@@ -56,27 +56,29 @@ class MixedDataModule(BASEDataModule):
             elif cfg.Selected_part == 'hand':
                 self.Dataset = HandDatasetVQ
                 self.DatasetEval = HandDatasetVQ
+            elif cfg.Selected_part == 'global':
+                self.Dataset = GlobalDatasetVQ
+                self.DatasetEval = GlobalDatasetVQ
             elif cfg.Selected_part == 'compositional':
                 self.Dataset = MixedDatasetVQ
                 self.DatasetEval = MixedDatasetVQ
             elif cfg.Selected_part == 'full':
-                pass
+                raise RuntimeError("Haven't setup this code!")
             elif cfg.Selected_part == 'full_new_loss':
-                pass
+                raise RuntimeError("Haven't setup this code!")
             elif cfg.Selected_part == 'full_h3d':
-                pass
-            # raise RuntimeError("Haven't setup this code!")
-        elif 'lm' in cfg.TRAIN.STAGE:
+                raise RuntimeError("Haven't setup this code!")
+        elif 'lm_pretrain' in cfg.TRAIN.STAGE and  cfg.DATASET.motion_representation == 'rotation':
             # Additional parameters
-            # Length of the dataset
-            # self.hparams.max_motion_length = cfg.DATASET.BEAT2.MAX_MOTION_LEN
-            # self.hparams.min_motion_length = cfg.DATASET.BEAT2.MIN_MOTION_LEN
-            # self.hparams.unit_length = cfg.DATASET.BEAT2.UNIT_LEN
             self.Dataset = MixedDatasetCB
             self.DatasetEval = Audio2MotionDataset
-        # elif cfg.TRAIN.STAGE == "token":
-        #     self.Dataset = MixedDatasetToken
-        #     self.DatasetEval = MixedDatasetToken
+        elif 'lm' in cfg.TRAIN.STAGE and  cfg.DATASET.motion_representation == 'rotation':
+            # Additional parameters
+            self.Dataset = MixedDatasetCB
+            self.DatasetEval = Audio2MotionDataset
+        elif cfg.TRAIN.STAGE == 'lm_pretrain' and cfg.DATASET.motion_representation == 'mixed':
+            self.Dataset = MixedDatasetP2P
+            # self.DatasetEval = MixedDatasetP2P
         else:
             raise RuntimeError("Haven't setup this code!")
 

@@ -1,9 +1,9 @@
-NAME: VQVAE_AMASS_Upper_256_512_ds4_wo_mesh_lr1e-4 # Experiment names
+NAME: VQVAE_Mixed_Global_wo_mesh_lr1e-4 # Experiment names
 ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
 NUM_NODES: 1 # Number of GPU nodes for distributed training
-DEVICE: [0] # Index of gpus eg. [0] or [0,1,2,3]
+DEVICE: [1] # Index of gpus eg. [0] or [0,1,2,3]
 
-Selected_part: upper  # defaut upper
+Selected_part: global  # defaut upper
 Body_parts:
   upper:
     ori: beat_smplx_joints
@@ -17,6 +17,10 @@ Body_parts:
     ori: beat_smplx_joints
     tar: beat_smplx_lower
     vae_test_dim: 54
+  global:
+    ori: beat_smplx_joints
+    tar: beat_smplx_lower
+    vae_test_dim: 61
   full:
     ori: beat_smplx_joints
     tar: beat_smplx_full
@@ -78,9 +82,15 @@ DATASET:
       stride: 20
       pose_length: 64
       pose_fps: 30
+  datasets_test:
+    - name: "AMASS"
+      stride: 20
+      pose_length: 64
+      pose_fps: 30
+
 
 METRIC:
-  TYPE: ['BodyMetrics']
+  TYPE: ['GlobalMetrics']
 
 LOSS:
   LAMBDA_FEATURE: 1.0
@@ -90,13 +100,10 @@ LOSS:
   ABLATION:
     RECONS_LOSS: 'l1_smooth'
 
-
 model:
   target: lom.models.lom.Language_Motion
   params:
-    # condition: 'text'
     task: 't2m'
-    # lm: ${lm.lom}
     modality_setup:
       params:
         audio_fps: ${lm.lom.params.audio_samplerate}
@@ -104,15 +111,15 @@ model:
         motion_fps: ${lm.lom.params.motion_framerate}
         motion_down: ${lm.lom.params.motion_down_sampling}
     modality_tokenizer:
-      vae_upper:
-        target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion
+      vae_global:
+        target: lom.archs.lom_vq.VAEConvZero
         params:
-          vae_layer: 3
+          vae_layer: 4
           code_num: 256
-          codebook_size: 512
+          codebook_size: 256
           vae_quantizer_lambda: 1
-          vae_test_dim: ${Body_parts.${Selected_part}.vae_test_dim}  # Dynamic override
-
+          vae_test_dim: 61
+          
 LOGGER:
   TYPE: ['wandb']
   VAL_EVERY_STEPS: 10
