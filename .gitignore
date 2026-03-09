@@ -13,6 +13,7 @@ results/
 experiments/
 third_party/
 scripts/misc/
-lom/data/mixed_dataset/__pycache__/
+__pycache__/
+*.pyc
 configs/mics/
 mics/
