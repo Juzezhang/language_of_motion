@@ -25,6 +25,14 @@ wget --post-data "username=$username&password=$password" 'https://download.is.tu
 echo "Downloading SMPLX lockedhead model..."
 wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=smplx&sfile=smplx_lockedhead_20230207.zip' -O './model_files/smplx_models/smplx_lockedhead_20230207.zip' --no-check-certificate --continue
 
+# # Download the FLAME2020 model
+# echo "Downloading FLAME2020 model..."
+# wget "https://flame.is.tue.mpg.de/download/FLAME2020.zip" -O './model_files/FLAME2020.zip' --no-check-certificate --continue
+
+# # Extract FLAME2020 model to a temporary directory
+# echo "Extracting FLAME2020 model..."
+# unzip -o './model_files/FLAME2020.zip' -d './model_files/FLAME2020/'
+
 # Extract lockedhead model to a temporary directory
 echo "Extracting SMPLX lockedhead model..."
 mkdir -p ./model_files/temp_smplx
@@ -46,6 +54,13 @@ fi
 if [ -f "./model_files/temp_smplx/models_lockedhead/smplx/SMPLX_NEUTRAL.npz" ]; then
     mv ./model_files/temp_smplx/models_lockedhead/smplx/SMPLX_NEUTRAL.npz ./model_files/smplx_models/smplx/
 fi
+
+
+
+# Clean up
+echo "Cleaning up..."
+rm -rf './model_files/FLAME2020.zip'
+
 
 # Clean up
 echo "Cleaning up..."

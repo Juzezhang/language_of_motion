@@ -75,8 +75,8 @@ def prepare_meshes(data, canonicalize=True, always_on_floor=False, is_smplx=Fals
 
     # fitted mesh do not need fixing axis
     # fix axis
-    if is_smplx:
-        data[..., 1] = - data[..., 1]
+    # if is_smplx:
+    #     data[..., 1] = - data[..., 1]
     # data[..., 0] = - data[..., 0]
 
 

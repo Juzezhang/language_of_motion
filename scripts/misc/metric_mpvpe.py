@@ -543,8 +543,8 @@ def calculate_kid(real_activations, generated_activations):
     return results
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 指定使用 GPU 0
-# 文件路径配置
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Specify using GPU 0
+# File path configuration
 root_path = "/simurgh/u/juze/experiments/mgpt/VQVAE_AMASS_upper_lower_papervision/results/result/"
 print(root_path)
 # base_path = "/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/AMASS/reconstructed_motion/"
@@ -553,23 +553,23 @@ gt_path = os.path.join(root_path, "gt")
 # res_path = os.path.join(gt_path, "../com")
 res_path = os.path.join(root_path, "rec")
 
-# 获取所有对应的文件名
+# Get all corresponding file names
 gt_files = sorted(glob(os.path.join(gt_path, "*.npz")))
 res_files = sorted(glob(os.path.join(res_path, "*.npz")))
 
-assert len(gt_files) == len(res_files), "gt 和 res 文件数量不匹配！"
+assert len(gt_files) == len(res_files), "Number of gt and res files do not match!"
 
-# 统计指标
+# Calculate metrics
 mpjpe_list, mpvpe_list, pampjpe_list, accel_list = [], [], [], []
 SMPLX_path = "./models/smplx_models/smplx/SMPLX_NEUTRAL_2020.npz"
 smplx = SMPLX(SMPLX_path, use_pca=False, ext='npz').cuda().eval()
 
-# 逐文件计算指标
+# Calculate metrics file by file
 bb = 0
 for gt_file, res_file in tqdm(zip(gt_files, res_files), total=len(gt_files)):
 # for gt_file in tqdm(gt_files, total=len(gt_files)):
-    # 加载数据
-    gt_data = np.load(gt_file, allow_pickle=True) # gt 数据
+    # Load data
+    gt_data = np.load(gt_file, allow_pickle=True) # gt data
 
     res_data = np.load(res_file, allow_pickle=True)
 
@@ -624,7 +624,7 @@ for gt_file, res_file in tqdm(zip(gt_files, res_files), total=len(gt_files)):
     accel = calc_accel(output_res.joints * 1000, output_gt.joints * 1000).mean().item()
     accel_list.append(accel)
 
-# 输出平均结果
+# Output average results
 print("MPJPE average：", np.mean(mpjpe_list))
 print("MPVPE average：", np.mean(pampjpe_list))
 print("PA-MPJPE average：", np.mean(pampjpe_list))

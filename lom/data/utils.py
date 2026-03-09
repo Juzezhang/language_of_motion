@@ -29,19 +29,88 @@ def collate_tensors(batch):
 def lom_collate(batch):
     notnone_batches = [b for b in batch if b is not None]
     split_name = batch[0]["split_name"]
-    if split_name == 'vq':
-        adapted_batch = {
-            "pose": collate_tensors([b["pose"].float() for b in notnone_batches]),
-            "face": collate_tensors([b["face"].float() for b in notnone_batches]),
-            "hand": collate_tensors([b["hand"].float() for b in notnone_batches]),
-            "upper": collate_tensors([b["upper"].float() for b in notnone_batches]),
-            "lower": collate_tensors([b["lower"].float() for b in notnone_batches]),
-            "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
-            "trans": collate_tensors([b["trans"].float() for b in notnone_batches]),
-            "motion_len": [b["motion_len"] for b in notnone_batches],
-            "id_name": [b["id_name"] for b in notnone_batches],
-            "dataset_name": [b["dataset_name"] for b in notnone_batches],
-        }
+    if split_name == 'vq' or split_name == 'vae' or split_name == 'vqvae':
+        select_part = batch[0]["select_part"]
+        if select_part == 'upper':
+            adapted_batch = {
+                "upper": collate_tensors([b["upper"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        elif select_part == 'lower' or select_part == 'lower_54':
+            adapted_batch = {
+                "lower": collate_tensors([b["lower"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "trans": collate_tensors([b["trans"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        elif select_part == 'face':
+            adapted_batch = {
+                "face": collate_tensors([b["face"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        elif select_part == 'hand':
+            adapted_batch = {
+                "hand": collate_tensors([b["hand"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        elif select_part == 'global':
+            adapted_batch = {
+                "lower": collate_tensors([b["lower"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "trans": collate_tensors([b["trans"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        elif select_part == 'compositional':
+            adapted_batch = {
+                "pose": collate_tensors([b["pose"].float() for b in notnone_batches]),
+                "face": collate_tensors([b["face"].float() for b in notnone_batches]),
+                "hand": collate_tensors([b["hand"].float() for b in notnone_batches]),
+                "lower": collate_tensors([b["lower"].float() for b in notnone_batches]),
+                "upper": collate_tensors([b["upper"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "trans": collate_tensors([b["trans"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        elif select_part == 'full':
+            adapted_batch = {
+                "pose": collate_tensors([b["pose"].float() for b in notnone_batches]),
+                "face": collate_tensors([b["face"].float() for b in notnone_batches]),
+                "hand": collate_tensors([b["hand"].float() for b in notnone_batches]),
+                "lower": collate_tensors([b["lower"].float() for b in notnone_batches]),
+                "upper": collate_tensors([b["upper"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "trans": collate_tensors([b["trans"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
+        else:
+            adapted_batch = {
+                "pose": collate_tensors([b["pose"].float() for b in notnone_batches]),
+                "face": collate_tensors([b["face"].float() for b in notnone_batches]),
+                "hand": collate_tensors([b["hand"].float() for b in notnone_batches]),
+                "upper": collate_tensors([b["upper"].float() for b in notnone_batches]),
+                "lower": collate_tensors([b["lower"].float() for b in notnone_batches]),
+                "shape": collate_tensors([b["shape"].float() for b in notnone_batches]),
+                "trans": collate_tensors([b["trans"].float() for b in notnone_batches]),
+                "motion_len": [b["motion_len"] for b in notnone_batches],
+                "id_name": [b["id_name"] for b in notnone_batches],
+                "dataset_name": [b["dataset_name"] for b in notnone_batches],
+            }
     elif split_name == 'test':
     # if "face" in notnone_batches[0]:
         adapted_batch = {
@@ -57,6 +126,7 @@ def lom_collate(batch):
             "raw_audio": [b["raw_audio"] for b in notnone_batches],
             "m_tokens_len": collate_tensors([b["m_tokens_len"] for b in notnone_batches]),
             "a_tokens_len": [b["a_tokens_len"] for b in notnone_batches],
+            'text_timestamp': [b["text_timestamp"] for b in notnone_batches],
         }
     else:
         adapted_batch = {
@@ -71,7 +141,6 @@ def lom_collate(batch):
             "text": [b["text"] for b in notnone_batches],
             "emotion_label":[b["emotion_label"] for b in notnone_batches],
         }
-
     return adapted_batch
 
 

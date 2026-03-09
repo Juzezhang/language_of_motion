@@ -1,0 +1,404 @@
+import sys, os
+import zipfile
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from utils.rotation_tools import matrot2aa, aa2matrot
+# from human_body_prior.tools.omni_tools import copy2cpu as c2c
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
+import pathlib
+from collections import defaultdict
+# from human_body_prior.body_model.body_model import BodyModel
+import pandas as pd
+from collections import defaultdict
+import os
+import trimesh
+from scipy.spatial.transform import Rotation as R
+import smplx
+import argparse
+
+
+"""
+Parse arguments and load config files
+"""
+
+parser = argparse.ArgumentParser(description='Dataset processing options')
+parser.add_argument("--smplx_path", type=str, required=False, default="./model_files/smplx_models", help="Path to SMPL-X model files")
+parser.add_argument("--dataset_path_original", type=str, required=False, default="/data/datasets/AMASS_original_smplx", help="Path to original AMASS dataset")
+parser.add_argument("--dataset_path_processed", type=str, required=False, default="/data/datasets/AMASS", help="Path to processed AMASS dataset")
+parser.add_argument("--index_path", type=str, required=False, default="./preprocess/index.csv", help="Path to index file")
+parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+parser.add_argument("--ex_fps", type=int, required=False, default=30, help="Target frame rate for processing")
+
+args = parser.parse_args()
+debug = args.debug
+# Set computation device (GPU if available, else CPU)
+comp_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+ex_fps = args.ex_fps
+num_betas = 16  # Number of shape parameters for SMPL-X model
+
+# Initialize SMPL-X model
+neutral_bm = smplx.create(args.smplx_path,
+    model_type='smplx',
+    gender='NEUTRAL_2020',
+    use_face_contour=False,
+    num_betas=num_betas,
+    num_expression_coeffs=100,
+    ext='npz',
+    use_pca=False,
+    ).eval().to(comp_device)
+
+# Read index file containing motion data information
+index_f = pd.read_csv(args.index_path)
+total_amount = index_f.shape[0]
+
+# Create mapping between source paths and new names
+humanml3d_name = {}
+for i in tqdm(range(total_amount)):
+    source_path = index_f.loc[i]['source_path']
+    if 'BMLhandball' not in source_path:
+        # Standardize path format
+        source_path = (source_path
+                    .replace('/BioMotionLab_NTroje/', '/BMLrub/')
+                    .replace('/DFaust_67/', '/DFaust/')
+                    .replace('/MPI_mosh/', '/MoSh/')
+                    .replace('/MPI_HDM05/', '/HDM05/')
+                    .replace('/MPI_Limits/', '/PosePrior/')
+                    .replace('/SSM_synced/', '/SSM/')
+                    .replace('/TCD_handMocap/', '/TCDHands/')
+                    .replace('/Transitions_mocap/', '/Transitions/')
+                    .replace('.npy', '.npz')
+                    # .replace('_poses', '')
+                    .replace(' ', '_')
+                    .replace('_poses', '_stageii'))
+    source_path = source_path.replace('./pose_data/', '').replace('/', '_')
+    new_name = index_f.loc[i]['new_name']
+    start_frame = index_f.loc[i]['start_frame']
+    end_frame = index_f.loc[i]['end_frame']
+    humanml3d_name[source_path] = (new_name, start_frame, end_frame)
+
+# # Print the first few items in humanml3d_name
+# print("First few items in humanml3d_name:")
+# for key, value in list(humanml3d_name.items())[:5]:
+#     print(f"{key}: {value}")
+
+
+# Define paths and datasets to process
+amass_data_d = pathlib.Path(args.dataset_path_original)
+
+# List of datasets to include in processing
+used_sequence = [
+            'ACCAD',
+            'BMLrub',
+            'BMLhandball',
+            'BMLmovi',
+            'CMU',
+            'DFaust',
+            'EKUT',
+            'Eyes_Japan_Dataset',
+            'HumanEva',
+            'KIT',
+            'HDM05',
+            'PosePrior',
+            'MoSh',
+            'SFU',
+            'SSM',
+            'TCDHands',
+            'TotalCapture',
+            'Transitions']
+
+# Find all .npz files in the specified datasets
+data_fs = [pathlib.Path(f'{rt}/{f}')
+           for rt,ds,fs in os.walk(amass_data_d)
+           for f in fs
+           if f.endswith('.npz') and any(part in used_sequence for part in pathlib.Path(rt).parts)]
+data_fs.sort()
+
+# Initialize lists for tracking different types of files
+new_data_fs = list()
+files_not_readable = list()
+files_not_used = list()
+files_model_type_not_usable = list()
+files_mocap_frame_rate_key_missing = list()
+files_frame_rate_not_multiple_of_30 = list()
+all_model_types = defaultdict(int)
+all_fps = defaultdict(int)
+
+# Process each file and categorize based on various criteria
+for f in tqdm(data_fs,ncols=150):
+    source_name = f.relative_to(amass_data_d).as_posix().replace('/', '_')
+    if source_name not in humanml3d_name:
+        files_not_used.append(f)
+        continue
+    if debug:
+        new_data_fs.append(f)
+        continue
+    try:
+        data = np.load(f, allow_pickle=True)
+    except zipfile.BadZipFile:
+        files_not_readable.append(f)
+        continue
+    all_model_types[data['surface_model_type'].item()] += 1
+    if data['surface_model_type'].item() not in {'smplx','smplx_locked_head'}:
+        files_model_type_not_usable.append(f)
+        continue
+    if 'mocap_frame_rate' not in data:
+        files_mocap_frame_rate_key_missing.append(f)
+        continue
+    fps = int(data['mocap_frame_rate'].item())
+    all_fps[fps] += 1
+    new_data_fs.append(f)
+
+# Print statistics about processed files
+print('total files:',len(data_fs))
+print('humanml not used', len(files_not_used))
+print('usable_files:',len(new_data_fs))
+print('files not readable:',len(files_not_readable))
+print('files model type not usable:',len(files_model_type_not_usable))
+print('files missing mocap_frame_rate:',len(files_mocap_frame_rate_key_missing))
+print('files with frame rante not multiple of 30fps:',len(files_frame_rate_not_multiple_of_30))
+print('model types:',*sorted(all_model_types.items()))
+print('mocap frame rate:',*sorted(all_fps.items()))
+
+# Verify that all files are accounted for
+assert len(data_fs) == (len(new_data_fs) +
+                        len(files_not_used) +
+                        len(files_not_readable) +
+                        len(files_model_type_not_usable) +
+                        len(files_mocap_frame_rate_key_missing) +
+                        len(files_frame_rate_not_multiple_of_30))
+data_fs = new_data_fs
+
+# Function to save mesh as OBJ file
+def save_obj(save_name, vertices, model_faces):
+    vertex_colors = np.ones([vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 0.8]
+    tri_mesh = trimesh.Trimesh(vertices, model_faces, vertex_colors=vertex_colors, process=False)
+    tri_mesh.export(save_name)
+
+# Function to create rotation matrix from Euler angles
+def make_rotate(rx, ry, rz, angle=True):
+    if angle:
+        rx, ry, rz = np.radians(rx), np.radians(ry), np.radians(rz)
+    sinX, sinY, sinZ = np.sin(rx), np.sin(ry), np.sin(rz)
+    cosX, cosY, cosZ = np.cos(rx), np.cos(ry), np.cos(rz)
+
+    # Create rotation matrices for each axis
+    Rx, Ry, Rz = np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))
+    Rx[0, 0] = 1.0
+    Rx[1, 1] = cosX
+    Rx[1, 2] = -sinX
+    Rx[2, 1] = sinX
+    Rx[2, 2] = cosX
+    Ry[0, 0] = cosY
+    Ry[0, 2] = sinY
+    Ry[1, 1] = 1.0
+    Ry[2, 0] = -sinY
+    Ry[2, 2] = cosY
+    Rz[0, 0] = cosZ
+    Rz[0, 1] = -sinZ
+    Rz[1, 0] = sinZ
+    Rz[1, 1] = cosZ
+    Rz[2, 2] = 1.0
+
+    # Combine rotations
+    R = np.matmul(np.matmul(Rz, Ry), Rx)
+    return R
+
+# Transformation matrix for coordinate system alignment
+trans_matrix = np.array([[1.0, 0.0, 0.0],
+                         [0.0, 0.0, 1.0],
+                         [0.0, -1.0, 0.0]])
+
+# Main function to process and align AMASS motion data
+def amass_align(motion_f, joints_f, joints_f_m, mesh_f, mesh_f_m, start_frame, end_frame, r_joints, l_joints):
+    try:
+        bdata = np.load(motion_f, allow_pickle=True)
+    except zipfile.BadZipFile:
+        return 0
+    fps = 0
+    try:
+        fps = bdata['mocap_frame_rate']
+    except:
+        return fps
+
+    # Initialize SMPL-X model parameters
+    bm = neutral_bm
+    assert bdata['surface_model_type'].item() == 'smplx'
+
+    # Downsample motion data to target frame rate
+    down_sample = int(fps / ex_fps)
+    bdata_poses = bdata['poses'][::down_sample,...]
+    bdata_trans = bdata['trans'][::down_sample,...]
+
+    new_start_frame = int(start_frame * 1.5) # 1.5 is the ratio of the original fps to the target fps
+    new_end_frame = int(end_frame * 1.5) # 1.5 is the ratio of the original fps to the target fps
+
+    fps = int(fps)
+    
+    # Apply dataset-specific frame adjustments
+    if 'humanact12' not in motion_f.as_posix():
+        if 'Eyes_Japan_Dataset' in source_path:
+            bdata_poses = bdata_poses[3 * ex_fps:]
+            bdata_trans = bdata_trans[3 * ex_fps:]
+        if 'HDM05' in motion_f.as_posix():
+            bdata_poses = bdata_poses[3 * ex_fps:]
+            bdata_trans = bdata_trans[3 * ex_fps:]
+        if 'TotalCapture' in motion_f.as_posix():
+            bdata_poses = bdata_poses[1 * ex_fps:]
+            bdata_trans = bdata_trans[1 * ex_fps:]
+        if 'PosePrior' in motion_f.as_posix():
+            bdata_poses = bdata_poses[1 * ex_fps:]
+            bdata_trans = bdata_trans[1 * ex_fps:]
+        if 'Transitions' in motion_f.as_posix():
+            bdata_poses = bdata_poses[int(0.5 * ex_fps):]
+            bdata_trans = bdata_trans[int(0.5 * ex_fps):]
+
+        bdata_poses = bdata_poses[new_start_frame: new_end_frame]
+        bdata_trans = bdata_trans[new_start_frame: new_end_frame]
+
+    # # Create neutral pose parameters
+    # body_parms = {
+    #         'root_orient': torch.Tensor(0 * bdata_poses[0:1, :3]).to(comp_device),
+    #         'pose_body': torch.Tensor(0 * bdata_poses[0:1, 3:66]).to(comp_device),
+    #         'pose_hand': torch.Tensor(0 * bdata_poses[0:1, 75:]).to(comp_device),
+    #         'trans': torch.Tensor(0 * bdata_trans).to(comp_device),
+    #         'betas': torch.Tensor(np.repeat(bdata['betas'][:num_betas][np.newaxis], repeats=1, axis=0)).to(comp_device),
+    #     }
+    
+    # # Get body model and calculate offset
+    # with torch.no_grad():
+    #     body = bm(**body_parms)
+    # offset = body.Jtr[0,0].cpu().numpy()
+
+    body = bm(
+        betas=torch.Tensor(0 * bdata['betas'][:num_betas]).to(comp_device).reshape(1, num_betas),
+        transl=torch.Tensor(0 * bdata_trans[0:1]).to(comp_device).reshape(1, 3),
+        expression=torch.zeros([1, 100]).to(comp_device),
+        jaw_pose=torch.zeros([1, 3]).to(comp_device),
+        global_orient=torch.Tensor(0 * bdata_poses[0:1, :3]).to(comp_device),
+        body_pose=torch.Tensor(0 * bdata_poses[0:1, 3:21 * 3 + 3]).to(comp_device),
+        left_hand_pose=torch.Tensor(0 * bdata_poses[0:1, 25 * 3:40 * 3]).to(comp_device),
+        right_hand_pose=torch.Tensor(0 * bdata_poses[0:1, 40 * 3:55 * 3]).to(comp_device),
+        leye_pose=torch.zeros([1, 3]).to(comp_device),
+        reye_pose=torch.zeros([1, 3]).to(comp_device),
+        )
+    offset = body.joints[0,0].cpu().numpy()
+
+
+
+
+    # Special handling for DFaust dataset
+    if "DFaust" in motion_f.as_posix():
+        bdata_trans[:,2] += 0.62 # I saw there have a foot high offset in the original data so manually add it.
+
+    # Process global orientation
+    global_orient = torch.Tensor(bdata_poses[:, :3])
+    global_orient = aa2matrot(global_orient)
+    global_orient = torch.Tensor(trans_matrix).unsqueeze(0) @ global_orient
+
+    global_orient_first_frame = global_orient[0].clone()
+
+    # Calculate xz plane orientation
+    xz_direction = np.array([global_orient_first_frame[0, 2], 0, global_orient_first_frame[2, 2]])
+    xz_direction /= np.linalg.norm(xz_direction)
+    current_xz_rotation_matrix = R.from_euler('y', np.arctan2(xz_direction[0], xz_direction[2])).as_matrix()
+    target_z_rotation_matrix = np.eye(3)
+    adjusted_rotation_matrix = target_z_rotation_matrix @ current_xz_rotation_matrix.T
+
+    # Apply coordinate transformations
+    adjusted_rotation_matrix = torch.tensor(adjusted_rotation_matrix).float()
+    global_orient = adjusted_rotation_matrix @ global_orient
+    global_orient = matrot2aa(global_orient)
+    global_orient = global_orient.numpy()
+    bdata_poses[:, :3] = global_orient
+    bdata_trans = np.dot(trans_matrix, bdata_trans.T).T
+    bdata_trans = np.dot(adjusted_rotation_matrix, bdata_trans.T).T
+
+    # Adjust translations
+    bdata_trans[:,1:] -= offset[1:]
+    bdata_trans[:,1:] += 0.1
+    bdata_trans[:,0] -= bdata_trans[0,0]
+    bdata_trans[:,2] -= bdata_trans[0,2]
+
+    if len(bdata_poses) == 0:
+        return 0
+
+    # Save processed motion data
+    bdata_dict = dict(bdata)
+    bdata_dict['poses'] = bdata_poses
+    bdata_dict['trans'] = bdata_trans
+    bdata_dict['mocap_frame_rate'] = 30.0
+    bdata_dict['expressions'] = torch.zeros([bdata_poses.shape[0], 10], dtype=torch.float32)
+    np.savez(joints_f, **bdata_dict)
+
+    bdata_poses = bdata_poses.reshape(-1,55,3)
+    bdata_poses_m = bdata_poses.copy()
+    bdata_trans_m = bdata_trans.copy()
+    bdata_poses_m[:, l_joints] = bdata_poses[:, r_joints]
+    bdata_poses_m[:, r_joints] = bdata_poses[:, l_joints]
+    bdata_poses_m[:, 0:, 1:3] *= -1
+    bdata_trans_m[..., 0] *= -1
+    bdata_trans_m[:,0] -= bdata_trans_m[0,0]
+    bdata_trans_m[:,2] -= bdata_trans_m[0,2]
+    bdata_poses_m = bdata_poses_m.reshape(-1, 55 * 3)
+
+    # Save mirrored motion data
+    bdata_dict_m = dict(bdata)
+    bdata_dict_m['poses'] = bdata_poses_m
+    bdata_dict_m['trans'] = bdata_trans_m
+    bdata_dict_m['mocap_frame_rate'] = 30.0
+    bdata_dict_m['expressions'] = torch.zeros([bdata_poses_m.shape[0], 10], dtype=torch.float32)
+    np.savez(joints_f_m, **bdata_dict_m)
+
+
+bm_params_f = pathlib.Path(os.path.join(args.smplx_path, 'smplx/SMPLX_NEUTRAL_2020.npz'))
+bm_params = np.load(bm_params_f,allow_pickle=True)
+joint2ind = bm_params['joint2num'].item()
+ind2joint = {v:k for k,v in joint2ind.items()}
+
+# Identify left and right joints for mirroring
+l_joints,r_joints = list(),list()
+for j in joint2ind:
+    if j.startswith('L_'):
+        l_j = j
+        r_j = j.replace('L_','R_')
+        l_joints.append(joint2ind[l_j])
+        r_joints.append(joint2ind[r_j])
+
+# Define joints to be dropped
+joints_to_drop = [joint2ind['Jaw'],
+                  joint2ind['L_Eye'],
+                  joint2ind['R_Eye']]
+
+# Print joint information
+print('num joints to swap:',len(l_joints))
+print('left joints:',l_joints)
+print('right joints:',r_joints)
+print('joints to drop:',joints_to_drop)
+for l,r in sorted(zip(l_joints,r_joints)):
+    print(f'{ind2joint[l]:10} ({l:2}) <--> ({r:2}) {ind2joint[r]}')
+
+# Define output directories
+pose_data_d = pathlib.Path(os.path.join(args.dataset_path_processed, 'amass_data_align'))
+mesh_save_d = pathlib.Path(os.path.join(args.dataset_path_processed, 'mesh_save'))
+mesh_save_d_mirror = pathlib.Path(os.path.join(args.dataset_path_processed, 'mesh_save_mirror'))
+
+# Process each file in the dataset
+for f in tqdm(data_fs,desc='amass-align',ncols=150):
+    source_name = f.relative_to(amass_data_d).as_posix().replace('/', '_')
+    new_name, start_frame, end_frame = humanml3d_name[source_name]
+    
+    # Define output file paths
+    out_f = pose_data_d / new_name.replace('.npy', '.npz')
+    out_f_m = pose_data_d / ('M' + new_name.replace('.npy', '.npz') )
+    out_mesh_f = mesh_save_d / new_name
+    out_mesh_f_m = mesh_save_d_mirror / ( 'M' + new_name )
+
+    # Create output directories if they don't exist
+    out_f.parent.mkdir(parents=True,exist_ok=True)
+
+    # Process and align motion data
+    amass_align(f, out_f, out_f_m, out_mesh_f, out_mesh_f_m, start_frame, end_frame, r_joints, l_joints)
+
+

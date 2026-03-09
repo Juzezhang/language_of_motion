@@ -12,11 +12,13 @@ from os.path import join as pjoin
 # from .a2m_exp import AM2AMetrics_Exp
 # from .m2e import M2EMetrics
 from .rotation_metric import RotationMetrics
+from .face_metric import FaceMetrics
 from .h3d_metric_bk import H3DMetrics
 from .co_speech import CoSpeechMetrics
+from .body_metric import BodyMetrics
+from .global_metric import GlobalMetrics
 
 class BaseMetrics(nn.Module):
-    # def __init__(self, cfg, datamodule, debug, **kwargs) -> None:
     def __init__(self, cfg, **kwargs) -> None:
         super().__init__()
 

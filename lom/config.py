@@ -147,7 +147,12 @@ def parse_args(phase="train"):
             required=False,
             help="render",
         )
-
+        group.add_argument(
+            "--upper_path",
+            type=str,
+            required=False,
+            help="upper path",
+        )
     if phase == "render":
         group.add_argument("--npy",
                            type=str,
@@ -175,8 +180,8 @@ def parse_args(phase="train"):
     params = parser.parse_args()
     
     # Load yaml config files
-    # OmegaConf.register_new_resolver("eval", eval)
-    OmegaConf.register_resolver("eval", eval)
+    OmegaConf.register_new_resolver("eval", eval)
+    # OmegaConf.register_resolver("eval", eval)
     # OmegaConf.register_resolver("eval", eval)
     cfg_assets = OmegaConf.load(params.cfg_assets)
     cfg_base = OmegaConf.load(pjoin(cfg_assets.CONFIG_FOLDER, 'default.yaml'))
@@ -205,6 +210,7 @@ def parse_args(phase="train"):
         cfg.DEMO.TASK = params.task
         cfg.TEST.FOLDER = params.out_dir if params.out_dir else cfg.TEST.FOLDER
         cfg.DEMO.RENDER = params.render
+        cfg.DEMO.UPPER_PATH = params.upper_path
         os.makedirs(cfg.TEST.FOLDER, exist_ok=True)
 
     if phase == "render":

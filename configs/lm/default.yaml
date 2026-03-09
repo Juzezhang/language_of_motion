@@ -4,7 +4,7 @@ params:
   model_path: ./models/flan-t5-base
   stage: ${TRAIN.STAGE}
   motion_codebook_size: ${model.params.codebook_size}
-  ablation: ${ABLATION}
+  # ablation: ${ABLATION}
   max_length: 512
   motion_down_sampling: 1
   audio_down_sampling: 320

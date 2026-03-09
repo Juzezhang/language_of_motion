@@ -677,7 +677,7 @@ joints_list = {
         # "right_thumb3":3,
     },
 
-        "beat_smplx_hands": {
+        "beat_smplx_hand": {
         #"pelvis":3,
         # "left_hip":3,
         # "right_hip":3,
@@ -1873,7 +1873,7 @@ BEAT_SMPLX_JOINTS = 'beat_smplx_joints'
 BEAT_SMPLX_FULL = 'beat_smplx_full'
 BEAT_SMPLX_FACE = 'beat_smplx_face'
 BEAT_SMPLX_UPPER = 'beat_smplx_upper'
-BEAT_SMPLX_HANDS = 'beat_smplx_hands'
+BEAT_SMPLX_HAND = 'beat_smplx_hand'
 BEAT_SMPLX_LOWER = 'beat_smplx_lower'
 BEAT_SMPLX_JOINTS_6D = 'beat_smplx_joints_6D'
 
@@ -1884,12 +1884,12 @@ ORI_JOINTS = BEAT_SMPLX_JOINTS
 ORI_JOINTS_6D = BEAT_SMPLX_JOINTS_6D
 JOINT_MASK_FACE = _create_joint_mask(ORI_JOINTS, BEAT_SMPLX_FACE)
 JOINT_MASK_UPPER = _create_joint_mask(ORI_JOINTS, BEAT_SMPLX_UPPER)
-JOINT_MASK_HANDS = _create_joint_mask(ORI_JOINTS, BEAT_SMPLX_HANDS)
+JOINT_MASK_HAND = _create_joint_mask(ORI_JOINTS, BEAT_SMPLX_HAND)
 JOINT_MASK_LOWER = _create_joint_mask(ORI_JOINTS, BEAT_SMPLX_LOWER)
 JOINT_MASK_FULL = _create_joint_mask(ORI_JOINTS, BEAT_SMPLX_FULL)
 JOINT_MASK_JOINTS_6D = _create_joint_mask_6D(ORI_JOINTS_6D, BEAT_SMPLX_FULL)
 JOINT_MASK_FACE_6D   = _create_joint_mask_6D(ORI_JOINTS_6D, BEAT_SMPLX_FACE)
-JOINT_MASK_HANDS_6D = _create_joint_mask_6D(ORI_JOINTS_6D, BEAT_SMPLX_HANDS)
+JOINT_MASK_HAND_6D = _create_joint_mask_6D(ORI_JOINTS_6D, BEAT_SMPLX_HAND)
 JOINT_MASK_LOWER_6D = _create_joint_mask_6D(ORI_JOINTS_6D, BEAT_SMPLX_LOWER)
 JOINT_MASK_UPPER_6D = _create_joint_mask_6D(ORI_JOINTS_6D, BEAT_SMPLX_UPPER)
 # For other ori_joints types, you can add more pre-computed masks if needed

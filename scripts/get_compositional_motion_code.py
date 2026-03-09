@@ -7,7 +7,7 @@ from lom.config import parse_args
 from lom.data.build_data import build_data
 from lom.models.build_model import build_model
 from loguru import logger
-from lom.utils.load_checkpoint import load_pretrained_vae
+from lom.utils.load_checkpoint import load_pretrained_vae_compositional
 
 def main():
     # parse options
@@ -41,10 +41,10 @@ def main():
             os.makedirs(output_dir_beat2, exist_ok=True)
 
     # Model
-    model = build_model(cfg, datasets)
+    model = build_model(cfg)
     logger.info("model {} loaded".format(cfg.model.target))
 
-    load_pretrained_vae(cfg, model, logger, phase="token")
+    load_pretrained_vae_compositional(cfg, model, logger, phase="token")
 
     if cfg.ACCELERATOR == "gpu":
         model.vae_face.to('cuda')
@@ -74,8 +74,9 @@ def main():
         tar_pose, tar_beta, tar_trans, tar_face, tar_hand, tar_upper, tar_lower = [
             batch[key].cuda() for key in ["pose", "shape", "trans", "face", "hand", "upper", "lower"]
         ]
+        lower_dim = cfg.model.params.modality_tokenizer.vae_lower.params.vae_test_dim
 
-        lower_dim = cfg.Representation_type.get('separate_rot').get('lower').get('vae_test_dim')
+        # lower_dim = cfg.Representation_type.get('separate_rot').get('lower').get('vae_test_dim')
         bs, n = tar_pose.shape[0], tar_pose.shape[1]
 
         tar_index_value_face_top = model.vae_face.map2index(tar_face)  # bs*n/4

@@ -7,12 +7,12 @@ from pathlib import Path
 from rich import get_console
 from rich.table import Table
 from omegaconf import OmegaConf
-from mGPT.callback import build_callbacks
-from mGPT.config import parse_args
-from mGPT.data.build_data import build_data
-from mGPT.models.build_model import build_model
-from mGPT.utils.logger import create_logger
-from mGPT.utils.load_checkpoint import load_pretrained, load_pretrained_vae
+from lom.callback import build_callbacks
+from lom.config import parse_args
+from lom.data.build_data import build_data
+from lom.models.build_model import build_model
+from lom.utils.logger import create_logger
+from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae, load_pretrained_vae_compositional
 
 
 def print_table(title, metrics, logger=None):
@@ -70,7 +70,8 @@ def main():
         cfg.DATASET.target.split('.')[-2])))
 
     # Model
-    model = build_model(cfg, datamodule)
+    # model = build_model(cfg, datamodule)
+    model = build_model(cfg)
     logger.info("model {} loaded".format(cfg.model.target))
 
     # Lightning Trainer
@@ -88,54 +89,20 @@ def main():
         callbacks=callbacks,
     )
 
+
     # Strict load vae model
-    if cfg.TRAIN.PRETRAINED_VAE:
-        load_pretrained_vae(cfg, model, logger)
+    if OmegaConf.select(cfg.TRAIN, 'PRETRAINED_VQ') is not None or cfg.TEST.CHECKPOINTS_FACE:
+        load_pretrained_vae_compositional(cfg, model, logger, phase="test")
 
-    # loading state dict
+    # Strict load pretrianed model
     if cfg.TEST.CHECKPOINTS:
-        load_pretrained(cfg, model, logger, phase="test")
-    else:
-        logger.warning("No checkpoints provided!!!")
+        load_pretrained_without_vqvae(cfg, model, logger)
 
-    # Calculate metrics
-    all_metrics = {}
-    replication_times = cfg.TEST.REPLICATION_TIMES
 
-    for i in range(replication_times):
-        metrics_type = ", ".join(cfg.METRIC.TYPE)
-        logger.info(f"Evaluating {metrics_type} - Replication {i}")
-        metrics = trainer.test(model, datamodule=datamodule)[0]
-        if "TM2TMetrics" in metrics_type and cfg.model.params.task == "t2m" and cfg.model.params.stage != 'vae':
-            # mm meteics
-            logger.info(f"Evaluating MultiModality - Replication {i}")
-            datamodule.mm_mode(True)
-            mm_metrics = trainer.test(model, datamodule=datamodule)[0]
-            # metrics.update(mm_metrics)
-            metrics.update(mm_metrics)
-            datamodule.mm_mode(False)
-        for key, item in metrics.items():
-            if key not in all_metrics:
-                all_metrics[key] = [item]
-            else:
-                all_metrics[key] += [item]
+    metrics = trainer.test(model, datamodule=datamodule)
 
-    all_metrics_new = {}
+    print(metrics)
 
-    for key, item in all_metrics.items():
-        mean, conf_interval = get_metric_statistics(np.array(item),
-                                                    replication_times)
-        all_metrics_new[key + "/mean"] = mean
-        all_metrics_new[key + "/conf_interval"] = conf_interval
-
-    print_table(f"Mean Metrics", all_metrics_new, logger=logger)
-    all_metrics_new.update(all_metrics)
-
-    # Save metrics to file
-    metric_file = output_dir.parent / f"metrics_{cfg.TIME}.json"
-    with open(metric_file, "w", encoding="utf-8") as f:
-        json.dump(all_metrics_new, f, indent=4)
-    logger.info(f"Testing done, the metrics are saved to {str(metric_file)}")
 
 
 if __name__ == "__main__":

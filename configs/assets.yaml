@@ -7,6 +7,7 @@ TEST:
 DATASET:
   # TASK_ROOT: model_files/mGPT_instructions
   SMPL_PATH: model_files/smplx_models
+  FLAME_PATH: model_files/FLAME2020/
   # TRANSFORM_PATH: model_files/transforms/
   WORD_VERTILIZER_PATH: model_files/t2m_evaluators/glove/
   KIT:

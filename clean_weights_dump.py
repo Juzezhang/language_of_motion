@@ -1,0 +1,18 @@
+import torch
+
+# 替换为你的 checkpoint 路径
+ckpt_path = "/simurgh/u/juze/code/language_of_motion/model_files/pretrained_cpt/lom_a2m/last.ckpt"
+# output_path = "cleaned_state_dict.pth"
+
+# 用旧版本 PyTorch 2.4 安全加载
+checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+
+# 通常是 checkpoint["state_dict"]，但可以先 print 一下 keys 确认
+if "state_dict" in checkpoint:
+    state_dict = checkpoint["state_dict"]
+else:
+    state_dict = checkpoint  # fallback
+
+# # 保存成干净的权重
+# torch.save(state_dict, output_path)
+# print(f"✅ Cleaned state_dict saved to {output_path}")

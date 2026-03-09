@@ -48,11 +48,11 @@ class MLM(nn.Module):
 
         # Parameters
         self.m_codebook_size = motion_codebook_size
-        self.face_codebook_size = motion_codebook_size
-        self.hand_codebook_size = motion_codebook_size
-        self.upper_codebook_size = motion_codebook_size
-        self.lower_codebook_size = motion_codebook_size
-        self.a_codebook_size = audio_codebook_size
+        self.face_codebook_size = modalities['face']['codebook_size']
+        self.hand_codebook_size = modalities['hand']['codebook_size']
+        self.upper_codebook_size = modalities['upper']['codebook_size']
+        self.lower_codebook_size = modalities['lower']['codebook_size']
+        self.a_codebook_size = modalities['audio']['codebook_size']
         self.max_length = max_length
         self.motion_framerate = motion_framerate
         self.audio_samplerate = audio_samplerate
@@ -308,12 +308,28 @@ class MLM(nn.Module):
             elif task == "a2m":
                 assert audio_tokens is not None, "Audio tokens required for a2m task"
                 audio_strings = self.audio_token_to_string(audio_tokens, audio_lengths)
+                # tasks = [{
+                #     'input': ["Generate face motion: <AudioTranscript_Placeholder>"],
+                #     'output': ['']
+                # }] * batch_size
                 tasks = [{
-                    'input': ["Generate face motion: <AudioTranscript_Placeholder>"],
+                    'input': ["Based on <Audio_Placeholder>, generate a synchronized movement sequence involving both upper, lower, face and hands body."],
                     'output': ['']
                 }] * batch_size
                 lengths = [0] * batch_size
+            elif task == "at2m":
+                assert audio_tokens is not None, "Audio tokens required for at2m task"
+                audio_lengths = [0] * batch_size if audio_lengths is None else audio_lengths
+                combine_strings = self.audio_transcript_token_to_string(audio_tokens, text_timestamp, audio_lengths)
+                tasks = [{
+                    'input': [
+                        "Given the audio and transcript with precise timestamp alignment in \"<AudioTranscript_Placeholder>\", generate a coordinated motion sequence involving face, hand, upper, and lower body movements."
+                    ],
+                    'output': ['']
+                }] * batch_size
                 
+                lengths = [0] * batch_size
+
             # Create inputs and outputs from templates
             inputs, outputs = self.template_fulfill(
                 tasks, lengths, audio_lengths,

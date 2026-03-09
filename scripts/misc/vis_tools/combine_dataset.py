@@ -1,18 +1,18 @@
 import os
 import shutil
 
-# 定义源文件夹路径
+# Define source folder path
 source_folder1 = "/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/beat2/beat2_text_segmented"
 # source_folder2 = "/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/HumanML3D/texts"
 
-# 定义目标文件夹路径
+# Define target folder path
 destination_folder = "/nas/nas_32/AI-being/zhangjz/exp_motion/datasets/beat2_amass/texts"
 
-# 如果目标文件夹不存在，则创建它
+# Create target folder if it doesn't exist
 if not os.path.exists(destination_folder):
     os.makedirs(destination_folder)
 
-# 复制一个文件夹中的所有子文件到目标文件夹
+# Copy all subfiles in a folder to the target folder
 def copy_files_from_folder(source_folder, destination_folder):
     for root, dirs, files in os.walk(source_folder):
         for file in files:

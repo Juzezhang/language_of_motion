@@ -50,7 +50,7 @@ class MixedDatasetCB(data.Dataset):
         # Set max data size depending on debug mode
         self.debug = debug
         if tiny or debug:
-            self.maxdata = 1e10
+            self.maxdata = 10
         else:
             self.maxdata = 1e10
 
@@ -92,6 +92,11 @@ class MixedDatasetCB(data.Dataset):
                 self.data_dict.update(self.data_dict_beat2)
                 self.metadata.extend(self.metadata_beat2)
                 print(f"Loaded BEAT2 dataset with {len(self.metadata_beat2)} samples")
+            elif dataset_name == "AMASS_Mixed":
+                self._load_amass_mixed(config)
+                self.data_dict.update(self.data_dict_amass_mixed)
+                self.metadata.extend(self.metadata_amass_mixed)
+                print(f"Loaded AMASS_Mixed dataset with {len(self.metadata_amass_mixed)} samples")
             else:
                 raise NotImplementedError(f"Unknown dataset name {dataset_name}")
 
@@ -444,7 +449,6 @@ class MixedDatasetCB(data.Dataset):
 
         ##################  AMASS  ##################
         # Define lengths for data processing
-
         # Define data paths
         motion_dir_amass = pjoin(data_root, code_path)
         text_dir_amass = pjoin(data_root, 'texts')
@@ -559,6 +563,160 @@ class MixedDatasetCB(data.Dataset):
         # Save to cache after processing
         self._save_to_cache(cache_path, self.data_dict_amass, self.metadata_amass, "AMASS")
 
+
+    def _load_amass_mixed(self, config):
+        """
+        Load the AMASS dataset based on the configuration.
+
+        Parameters:
+        - config: Configuration dictionary for AMASS.
+        """
+        data_root = self.args["AMASS_Mixed"].ROOT
+
+        cache_path = self._get_cache_path(config, data_root)
+        
+
+        # code_path = config.get("code_path")
+        instructions_file = config.get("instructions_file")
+        amass_max_length = config.get("max_length")
+        amass_min_length = config.get("min_length")
+
+        # Determine the instructions path based on the stage
+        if self.task_path:
+            instructions_path = self.task_path
+        elif self.stage == 'lm_pretrain' or self.stage == 'lm_p2p':
+            instructions_path = pjoin(data_root, instructions_file)
+        elif self.stage in ['lm_instruct', "lm_causal_instruct"]:
+            instructions_path = pjoin(data_root, instructions_file)
+        else:
+            raise NotImplementedError(f"stage {self.stage} not implemented")
+
+        # Load instructions and tasks for AMASS_Mixed
+        self.instructions_amass = json.load(open(instructions_path, 'r'))
+        self.tasks_amass = []
+        for task in self.instructions_amass.keys():
+            for subtask in self.instructions_amass[task].keys():
+                self.tasks_amass.append(self.instructions_amass[task][subtask])
+
+        ##################  AMASS_Mixed  ##################
+        # Define lengths for data processing
+        # Define data paths
+        # motion_dir_amass = pjoin(data_root, code_path)
+        upper_dir_amass = pjoin(data_root, 'TOKENS_AGENT_25/upper')
+        lower_dir_amass = pjoin(data_root, 'TOKENS_AGENT_25_H3D')
+        text_dir_amass = pjoin(data_root, 'texts')
+        # audio_dir_amass = pjoin(data_root_amass, 'audios_token')
+
+        split_file = pjoin(data_root, self.split + '.txt')
+        # Data id list
+        id_list = []
+        with cs.open(split_file, "r") as f:
+            for line in f.readlines():
+                id_list.append(line.strip())
+
+        # Iterate through the files to load data
+        enumerator = enumerate(track(id_list, f"Loading AMASS {self.split}"))
+        self.metadata_amass = []
+        self.data_dict_amass = {}
+
+        # Fast loading
+        for i, name in enumerator:
+            if len(self.metadata_amass) > self.maxdata:
+                break
+            try:
+                # Load motion tokens
+                upper_token_list = np.load(pjoin(motion_dir_amass, 'upper', f'{name}.npy'))
+                lower_token_list = np.load(pjoin(motion_dir_amass, 'lower', f'{name}.npy'))
+                face_token_list = np.zeros_like(lower_token_list)
+                hand_token_list = np.zeros_like(lower_token_list)
+
+                if lower_token_list.shape[1] > amass_max_length or lower_token_list.shape[1] < amass_min_length:
+                    continue
+
+                # Read text
+                with cs.open(pjoin(text_dir_amass, name + '.txt')) as f:
+                    text_data = []
+                    flag = False
+                    lines = f.readlines()
+                    for line in lines:
+                        try:
+                            text_dict = {}
+                            line_split = line.strip().split('#')
+                            caption = line_split[0]
+                            t_tokens = line_split[1].split(' ')
+                            f_tag = float(line_split[2])
+                            to_tag = float(line_split[3])
+                            f_tag = 0.0 if np.isnan(f_tag) else f_tag
+                            to_tag = 0.0 if np.isnan(to_tag) else to_tag
+
+                            text_dict['caption'] = caption
+                            text_dict['tokens'] = t_tokens
+                            if f_tag == 0.0 and to_tag == 0.0:
+                                flag = True
+                                text_data.append(text_dict)
+                            else:
+
+                                hand_token_list_new = [
+                                    tokens[int(f_tag * self.motion_token_fps):int(to_tag * self.motion_token_fps)]
+                                    for tokens in hand_token_list
+                                    if int(f_tag * self.motion_token_fps) < int(to_tag * self.motion_token_fps)
+                                ]
+                                upper_token_list_new = [
+                                    tokens[int(f_tag * self.motion_token_fps):int(to_tag * self.motion_token_fps)]
+                                    for tokens in upper_token_list
+                                    if int(f_tag * self.motion_token_fps) < int(to_tag * self.motion_token_fps)
+                                ]
+                                lower_token_list_new = [
+                                    tokens[int(f_tag * self.motion_token_fps):int(to_tag * self.motion_token_fps)]
+                                    for tokens in lower_token_list
+                                    if int(f_tag * self.motion_token_fps) < int(to_tag * self.motion_token_fps)
+                                ]
+                                face_token_list_new = [
+                                    tokens[int(f_tag * self.motion_token_fps):int(to_tag * self.motion_token_fps)]
+                                    for tokens in face_token_list
+                                    if int(f_tag * self.motion_token_fps) < int(to_tag * self.motion_token_fps)
+                                ]
+
+                                if len(hand_token_list_new) == 0:
+                                    continue
+
+                                for tasks in self.tasks_amass:
+                                    new_name = 'amass_' + '%s_%f_%f' % (name, f_tag, to_tag) + tasks['class']
+                                    self.data_dict_amass[new_name] = {
+                                        'face_token': face_token_list_new,
+                                        'hand_token': hand_token_list_new,
+                                        'lower_token': lower_token_list_new,
+                                        'upper_token': upper_token_list_new,
+                                        'text': [text_dict],
+                                        'audio': None,
+                                        'tasks': tasks
+                                    }
+                                    self.metadata_amass.append(new_name)
+
+                        except:
+                            pass
+
+                if flag:
+                    for tasks in self.tasks_amass:
+                        save_name = 'amass_' + name + '_' + tasks['class']
+                        self.data_dict_amass[save_name] = {
+                            'face_token': face_token_list,
+                            'hand_token': hand_token_list,
+                            'lower_token': lower_token_list,
+                            'upper_token': upper_token_list,
+                            'text': text_data,
+                            'audio': None,
+                            'tasks': tasks
+                        }
+                        self.metadata_amass.append(save_name)
+            except:
+                pass
+
+
+        # Save to cache after processing
+        self._save_to_cache(cache_path, self.data_dict_amass, self.metadata_amass, "AMASS")
+
+
     def _get_cache_path(self, config, data_root):
         """
         Generate a cache file path based on dataset configuration.
@@ -624,6 +782,14 @@ class MixedDatasetCB(data.Dataset):
             
             config_str = f"{dataset_type}_{self.split}_{self.stage}_{trainset_str}_{vary_length_str}_{debug_str}"
         
+        elif dataset_type == "AMASS_Mixed":
+            code_path = config.get("code_path")
+            code_path_audio = config.get("code_path_audio")
+            # pose_length = config.get("pose_length")
+            # Format boolean values more descriptively
+            debug_str = "Debug" if self.debug else "NoDebug"
+            config_str = f"{dataset_type}_{self.split}_{self.stage}_{self.test_length}_{code_path}_{code_path_audio}_{debug_str}"
+
         else:
             raise NotImplementedError(f"dataset_type {dataset_type} not implemented")
         

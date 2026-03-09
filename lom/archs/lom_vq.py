@@ -184,6 +184,92 @@ class VQDecoderUS(nn.Module):
         return outputs
 
 
+
+
+class VQEncoderDS2(nn.Module):
+    def __init__(self, vae_layer, code_num, vae_test_dim):
+        super(VQEncoderDS2, self).__init__()
+        n_down = vae_layer
+        channels = [vae_test_dim] + ([code_num] * n_down)
+        layers = list()
+        for i in range(n_down):
+            stride = 1 if i == 0 or i == 1 else 2
+            layers.append(nn.Conv1d(channels[i], channels[i + 1], 3, stride, 1))
+            layers.append(nn.LeakyReLU(0.2, inplace=True))
+            layers.append(ResBlock(channels[i + 1]))
+        self.main = nn.Sequential(*layers)
+        self.main.apply(init_weight)
+
+    def forward(self, inputs):
+        inputs = inputs.permute(0, 2, 1)
+        outputs = self.main(inputs).permute(0, 2, 1)
+        return outputs
+
+
+class VQDecoderUS2(nn.Module):
+    def __init__(self, vae_layer, code_num, vae_test_dim):
+        super(VQDecoderUS2, self).__init__()
+        n_up = vae_layer
+        channels = code_num
+        out_dim = vae_test_dim
+        layers = list()
+        for i in range(n_up):
+            layers.append(ResBlock(channels))
+            if i < n_up - 2:
+                layers.append(nn.Upsample(scale_factor=2, mode='nearest'))
+            layers.append(nn.Conv1d(channels, channels, 3, 1, 1))
+        layers.append(nn.LeakyReLU(0.2, inplace=True))
+        layers.append(nn.Conv1d(channels, out_dim, 3, 1, 1))
+        self.main = nn.Sequential(*layers)
+        self.main.apply(init_weight)
+
+    def forward(self, inputs):
+        inputs = inputs.permute(0, 2, 1)
+        outputs = self.main(inputs).permute(0, 2, 1)
+        return outputs
+
+class VQEncoderDS1(nn.Module):
+    def __init__(self, vae_layer, code_num, vae_test_dim):
+        super(VQEncoderDS1, self).__init__()
+        n_down = vae_layer
+        channels = [vae_test_dim] + ([code_num] * n_down)
+        layers = list()
+        for i in range(n_down):
+            stride = 1
+            layers.append(nn.Conv1d(channels[i], channels[i + 1], 3, stride, 1))
+            layers.append(nn.LeakyReLU(0.2, inplace=True))
+            layers.append(ResBlock(channels[i + 1]))
+        self.main = nn.Sequential(*layers)
+        self.main.apply(init_weight)
+
+    def forward(self, inputs):
+        inputs = inputs.permute(0, 2, 1)
+        outputs = self.main(inputs).permute(0, 2, 1)
+        return outputs
+
+
+class VQDecoderUS1(nn.Module):
+    def __init__(self, vae_layer, code_num, vae_test_dim):
+        super(VQDecoderUS1, self).__init__()
+        n_up = vae_layer
+        channels = code_num
+        out_dim = vae_test_dim
+        layers = list()
+        for i in range(n_up):
+            layers.append(ResBlock(channels))
+            # if i < n_up - 2:
+            #     layers.append(nn.Upsample(scale_factor=2, mode='nearest'))
+            layers.append(nn.Conv1d(channels, channels, 3, 1, 1))
+        layers.append(nn.LeakyReLU(0.2, inplace=True))
+        layers.append(nn.Conv1d(channels, out_dim, 3, 1, 1))
+        self.main = nn.Sequential(*layers)
+        self.main.apply(init_weight)
+
+    def forward(self, inputs):
+        inputs = inputs.permute(0, 2, 1)
+        outputs = self.main(inputs).permute(0, 2, 1)
+        return outputs
+
 class VQVAEConvZero(nn.Module):
     def __init__(self, vae_layer=2, code_num=256, vae_test_dim=300, codebook_size=256, vae_quantizer_lambda=1.0):
         super(VQVAEConvZero, self).__init__()
@@ -227,6 +313,118 @@ class VQVAEConvZeroDSUS_PaperVersion(nn.Module):
         self.encoder = VQEncoderDS(vae_layer, code_num, vae_test_dim)
         self.quantizer = Quantizer(codebook_size, code_num, vae_quantizer_lambda)
         self.decoder = VQDecoderUS(vae_layer, code_num, vae_test_dim)
+
+    def forward(self, inputs):
+        pre_latent = self.encoder(inputs)
+        # print(pre_latent.shape)
+        embedding_loss, vq_latent, _, perplexity = self.quantizer(pre_latent)
+        rec_pose = self.decoder(vq_latent)
+        return {
+            "poses_feat": vq_latent,
+            "embedding_loss": embedding_loss,
+            "perplexity": perplexity,
+            "rec_pose": rec_pose
+        }
+
+    def map2index(self, inputs):
+        pre_latent = self.encoder(inputs)
+        index = self.quantizer.map2index(pre_latent)
+        return index
+
+    def map2latent(self, inputs):
+        pre_latent = self.encoder(inputs)
+        index = self.quantizer.map2index(pre_latent)
+        z_q = self.quantizer.get_codebook_entry(index)
+        return z_q
+
+    def decode(self, index):
+        z_q = self.quantizer.get_codebook_entry(index)
+        rec_pose = self.decoder(z_q)
+        return rec_pose
+
+
+# VQVAE Class
+class VQVAEConvZeroDSUS4_PaperVersion(nn.Module):
+    def __init__(self, vae_layer=2, code_num=256, vae_test_dim=300, codebook_size=256, vae_quantizer_lambda=1.0):
+        super().__init__()
+        self.encoder = VQEncoderDS(vae_layer, code_num, vae_test_dim)
+        self.quantizer = Quantizer(codebook_size, code_num, vae_quantizer_lambda)
+        self.decoder = VQDecoderUS(vae_layer, code_num, vae_test_dim)
+
+    def forward(self, inputs):
+        pre_latent = self.encoder(inputs)
+        # print(pre_latent.shape)
+        embedding_loss, vq_latent, _, perplexity = self.quantizer(pre_latent)
+        rec_pose = self.decoder(vq_latent)
+        return {
+            "poses_feat": vq_latent,
+            "embedding_loss": embedding_loss,
+            "perplexity": perplexity,
+            "rec_pose": rec_pose
+        }
+
+    def map2index(self, inputs):
+        pre_latent = self.encoder(inputs)
+        index = self.quantizer.map2index(pre_latent)
+        return index
+
+    def map2latent(self, inputs):
+        pre_latent = self.encoder(inputs)
+        index = self.quantizer.map2index(pre_latent)
+        z_q = self.quantizer.get_codebook_entry(index)
+        return z_q
+
+    def decode(self, index):
+        z_q = self.quantizer.get_codebook_entry(index)
+        rec_pose = self.decoder(z_q)
+        return rec_pose
+
+
+
+# VQVAE Class
+class VQVAEConvZeroDSUS2_PaperVersion(nn.Module):
+    def __init__(self, vae_layer=2, code_num=256, vae_test_dim=300, codebook_size=256, vae_quantizer_lambda=1.0):
+        super().__init__()
+        self.encoder = VQEncoderDS2(vae_layer, code_num, vae_test_dim)
+        self.quantizer = Quantizer(codebook_size, code_num, vae_quantizer_lambda)
+        self.decoder = VQDecoderUS2(vae_layer, code_num, vae_test_dim)
+
+    def forward(self, inputs):
+        pre_latent = self.encoder(inputs)
+        # print(pre_latent.shape)
+        embedding_loss, vq_latent, _, perplexity = self.quantizer(pre_latent)
+        rec_pose = self.decoder(vq_latent)
+        return {
+            "poses_feat": vq_latent,
+            "embedding_loss": embedding_loss,
+            "perplexity": perplexity,
+            "rec_pose": rec_pose
+        }
+
+    def map2index(self, inputs):
+        pre_latent = self.encoder(inputs)
+        index = self.quantizer.map2index(pre_latent)
+        return index
+
+    def map2latent(self, inputs):
+        pre_latent = self.encoder(inputs)
+        index = self.quantizer.map2index(pre_latent)
+        z_q = self.quantizer.get_codebook_entry(index)
+        return z_q
+
+    def decode(self, index):
+        z_q = self.quantizer.get_codebook_entry(index)
+        rec_pose = self.decoder(z_q)
+        return rec_pose
+
+
+# VQVAE Class
+class VQVAEConvZeroDSUS1_PaperVersion(nn.Module):
+    def __init__(self, vae_layer=2, code_num=256, vae_test_dim=300, codebook_size=256, vae_quantizer_lambda=1.0):
+        super().__init__()
+        self.encoder = VQEncoderDS1(vae_layer, code_num, vae_test_dim)
+        self.quantizer = Quantizer(codebook_size, code_num, vae_quantizer_lambda)
+        self.decoder = VQDecoderUS1(vae_layer, code_num, vae_test_dim)
 
     def forward(self, inputs):
         pre_latent = self.encoder(inputs)

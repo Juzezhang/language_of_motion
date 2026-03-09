@@ -1,6 +1,3 @@
-# import os
-# import glob
-# import torch
 import pytorch_lightning as pl
 from omegaconf import OmegaConf
 from lom.callback import build_callbacks
@@ -9,7 +6,7 @@ from lom.data.build_data import build_data
 from lom.models.build_model import build_model
 from lom.utils.logger import create_logger
 from lom.utils.load_checkpoint import load_pretrained, load_pretrained_vae, load_pretrained_without_vqvae
-# from utils_emage import other_tools
+
 
 def main():
     # Configs
@@ -40,9 +37,8 @@ def main():
         cfg.DATASET.target.split('.')[-2])))
 
     # Model
-    model = build_model(cfg, datamodule)
-    # if cfg.TRAIN.FORCE_BF16 and cfg.TRAIN.PRECISION == 'bf16':
-    #     model.to(torch.bfloat16)  # convert model weight to BF16
+    # model = build_model(cfg, datamodule)
+    model = build_model(cfg)
 
     logger.info("model {} loaded".format(cfg.model.target))
 
@@ -74,11 +70,6 @@ def main():
         load_pretrained_vae(cfg, model, logger)
 
 
-    # Pytorch 2.0 Compile
-    # if torch.__version__ >= "2.0.0":
-    #     model = torch.compile(model, mode="reduce-overhead")
-    # model = torch.compile(model)
-
     # Lightning Fitting
     if cfg.TRAIN.RESUME:
         trainer.fit(model,
@@ -91,7 +82,6 @@ def main():
     logger.info(
         f"The outputs of this experiment are stored in {cfg.FOLDER_EXP}")
     logger.info("Training ends!")
-
 
 
 if __name__ == "__main__":
