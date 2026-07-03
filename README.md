@@ -11,6 +11,21 @@ Language of Motion (LoM) is a framework that models human motion generation as a
 
 ![Teaser](./assets/teaser.png)
 
+## 🆕 Language of Motion v2
+
+This repository now supports two variants. **v1 is the default and unchanged** — everything below (configs, pretrained checkpoints, demos) is v1. **v2** changes the audio tokenizer and the language-model architecture:
+
+| | Audio tokenizer | Language model |
+|---|---|---|
+| **v1** (default, paper) | HuBERT — codebook 500 | T5 **encoder-decoder** (HF, optional `turbot5` flash) — audio→motion seq2seq |
+| **v2** | **GLM-4-Voice** — codebook 16384, 12.5 tok/s | **decoder-only LLM** — a *pretrained* LLM (**Qwen3-0.6B** best; GPT-2 also supported) whose text vocabulary is **kept and enlarged** with the motion/audio codebooks |
+
+v2 models audio→motion as **one causal stream** — `[BOS] audio [SEP] [FACE]…[UPPER]…[LOWER]…[HAND]…[EOS]` (per-part self-delimiting blocks) — on a **pretrained** HuggingFace `AutoModelForCausalLM` whose text vocabulary is **kept and enlarged** with the GLM audio codebook + the four motion codebooks. Pretrained + long training matches or beats the from-scratch T5, and **Qwen3 > GPT-2** at matched size; no flash-attention backend needed.
+
+**→ See [docs/v2.md](docs/v2.md)** for v2 setup, audio tokenization, the extra TFHP talking-head data, root translation, and FLAME face rendering.
+
+> v2 changes the audio-token vocabulary, so it requires re-training the language model; the released v1 checkpoints are HuBERT-based and remain the default.
+
 ## ✅ TODO List
 
 - [x] Initial code release
@@ -42,8 +57,14 @@ conda install pytorch==2.4.0 torchvision torchaudio pytorch-cuda=12.1 -c pytorch
 python -m pip install pip==21.3
 pip install -r requirements.txt
 
-# Install additional packages
-pip install turbot5 -U
+# (Optional) T5 flash-attention backends — only needed for the ENCODER-DECODER language model
+# (v1, or the legacy FAT5 configs). The v2 decoder-only LLM uses a stock HuggingFace
+# AutoModelForCausalLM and needs none of these.
+#   turbot5 (v1 paper flash backend):  pip install turbot5 -U   (requires transformers<=4.49)
+#   FAT5 (legacy v2 flash backend, vendored into third_party/):
+# mkdir -p third_party
+# git clone https://github.com/catie-aq/flashT5 third_party/flashT5
+#   then set `flash_attention_type: fat5` in the lm config.
 # Alternative for RTX 5090 users: upgrade triton to support the new architecture
 # pip install --upgrade "git+https://github.com/openai/triton.git@main#egg=triton&subdirectory=python"
 # export TRITON_JIT_CUDA_ARCHITECTURES=$(
@@ -175,7 +196,7 @@ Hand Region:
 python -m train --cfg configs/config_mixed_stage1_vq_hand_256_512_ds4_wo_mesh_lr1e-4.yaml --nodebug
 ```
 
-Global(The compositional tokenizer didn't include any golbal information or global translation, so we still need a global translation predictor, this part are heavliy borrowed from [EMAGE](https://github.com/PantoMatrix/PantoMatrix) ):
+Global(The compositional tokenizer didn't include any golbal information or global translation, so we still need a global translation predictor, this part are heavliy borrowed from [EMAGE](https://github.com/PantoMatrix/PantoMatrix). **v2 instead recovers the root translation with ViBES's local-velocity method — see the v2 section above.** ):
 ```bash
 python -m train --cfg configs/config_mixed_stage1_vae_global_wo_mesh_lr1e-4.yaml --nodebug
 ```

@@ -6,7 +6,7 @@ torchmetrics
 omegaconf==2.1.0
 shortuuid
 chumpy
-transformers==4.42.4
+transformers==5.12.1   # v2/FAT5 default (newest). For v1/turbot5 (paper) downgrade to <=4.49 — see README "transformers version".
 diffusers
 einops
 wandb

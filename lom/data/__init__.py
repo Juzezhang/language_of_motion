@@ -68,7 +68,8 @@ class BASEDataModule(pl.LightningDataModule):
         return DataLoader(
             self.train_dataset,
             shuffle=False,
-            persistent_workers=True,
+            persistent_workers=self.cfg.TRAIN.NUM_WORKERS > 0,   # persistent_workers needs num_workers>0
+            drop_last=True,          # fixed batch shape (with max_length padding -> one FAT5 kernel shape)
             **dataloader_options,
         )
 

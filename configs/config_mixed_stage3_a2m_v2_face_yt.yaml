@@ -1,0 +1,96 @@
+NAME: Instruct_Face_v2_TFHP_YT   # FACE-ONLY a2f trained on TFHP + YouTube_Talking_Synthetic (no BEAT2)
+ACCELERATOR: 'gpu'
+NUM_NODES: 1
+DEVICE: [0, 1]                # override with --device 0 for a single-GPU SLURM launch
+DEBUG: False
+
+Selected_part: compositional
+Representation_type:
+  compositional:
+    face:  {ori: beat_smplx_joints, tar: beat_smplx_face_head, vae_test_dim: 112}   # v2 ViBES: 6D head + 6D jaw + 100 expr
+    hand:  {ori: beat_smplx_joints, tar: beat_smplx_hand,  vae_test_dim: 180}
+    upper: {ori: beat_smplx_joints, tar: beat_smplx_upper, vae_test_dim: 78}
+    lower: {ori: beat_smplx_joints, tar: beat_smplx_lower, vae_test_dim: 54}
+
+TRAIN:
+  STAGE: lm_instruct
+  NUM_WORKERS: 8
+  BATCH_SIZE: 8                 # per GPU
+  END_EPOCH: 999999
+  PRECISION: 'bf16'
+  FORCE_BF16: False
+  # Full-resume the TFHP+YT run (continue epoch/optimizer/step). Was, for the initial launch:
+  #   RESUME: '' ; PRETRAINED: experiments/lom/Instruct_TFHP_Face_v2/checkpoints/last.ckpt  (warm-start from converged TFHP, ep461)
+  # For an open-source / from-scratch run: RESUME: '' ; PRETRAINED: ./model_files/pretrained_cpt/lom_a2m/Instruct_Mixed_A2M_LM.ckpt
+  # batch 4/GPU (eff. 16) + LR 4e-4 (linear scaling, 2x batch -> 2x LR). Warm-start (fresh optimizer)
+  # from the epoch-91 batch-2 weights — a full-resume would restore the old 2e-4 LR from the ckpt.
+  RESUME: ''
+  PRETRAINED: /simurgh2/users/juze/code/language_of_motion/experiments/lom/Instruct_Face_v2_TFHP_YT_2026-06-30-12-41-26/checkpoints/last_ep91_b2.ckpt
+  PRETRAINED_FACE:   ./model_files/pretrained_cpt/face/face_lom.ckpt       # v2: ViBES 1x face VQ (112D, cb512)
+  PRETRAINED_HAND:   ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt    # body VQs loaded but body heads get no gradient (face_only -> body masked to -100)
+  PRETRAINED_UPPER:  ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  PRETRAINED_LOWER:  ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  PRETRAINED_GLOBAL: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  OPTIM: {target: AdamW, params: {lr: 4e-4, betas: [0.9, 0.99], weight_decay: 0.0}}   # 2x for eff. batch 16 (was 2e-4 @ batch 8)
+
+LOSS: {LAMBDA_FEATURE: 1.0, LAMBDA_VELOCITY: 0.5, LAMBDA_COMMIT: 0.02, LAMBDA_CLS: 1.0}
+ABLATION: {RECONS_LOSS: 'l1_smooth'}
+EVAL: {BATCH_SIZE: 4, SPLIT: test}
+TEST: {CHECKPOINTS: '', SPLIT: test, BATCH_SIZE: 1, TEST_LENGTH: 64}
+
+DATASET:
+  vary_length: False
+  vary_window: False                 # fixed-length windows (1024 face / 256 body)
+  pose_fps: 25                       # v2: 25 fps
+  unit_length: 4                     # motion_token_fps = pose_fps/unit_length = 25/4 = 6.25 = body token rate
+  pre_frames: 4
+  test_length: 256                   # body tokens/window; face = 4x = 1024
+  audio_fps: 16000
+  audio_down: 1280                   # GLM-4-Voice 12.5 tok/s
+  motion_representation: "rotation"
+  target: lom.data.MixedDataset.MixedDataModule
+  datasets:                          # TRAIN: both face-only sources (body masked to -100 via face_only flag)
+    - name: "TFHP"                               # HDTF_TFHP (DiffPoseTalk): face (FLAME) + GLM audio, nested seq/take/clip
+      code_path: "TOKENS_AGENT_25/face"          # face tokens (25 tok/s, ViBES face VQ cb512)
+      code_path_audio: "audios_token_glm"        # GLM-4-Voice audio tokens (12.5 tok/s)
+      instructions_file: "template_instructions_beat2_minimal.json"
+    - name: "YouTube_Synthetic"                  # synthetic talking-face: face (FLAME) + GLM audio, FLAT per-clip ids from <split>.txt
+      code_path: "TOKENS_512_512_DS1_wo_meshloss_synthetic"   # face tokens (25 tok/s = DS1, ViBES face VQ cb512)
+      code_path_audio: "audios_token_glm"        # GLM-4-Voice audio tokens (12.5 tok/s)
+      instructions_file: "template_instructions_beat2_minimal.json"
+  datasets_test:                     # TEST/val path stays on BEAT2 (known-working test dataloader; val rarely runs)
+    - name: "BEAT2"
+      code_path: "TOKENS_DS4_v2"
+      code_path_audio: "audios_token_glm"
+      foot_contact_path: foot_contacts_25
+      stride: 20
+      training_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+      testing_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+      additional_data: True
+      pose_rep: smplxflame_25
+      instructions_file: "template_instructions_beat2_minimal.json"
+
+METRIC: {TYPE: ['CoSpeechMetrics']}
+
+model:
+  target: lom.models.lom.Language_Motion
+  params:
+    task: 'a2m'
+    lm: ${lm.lom_v2}                          # v2: FAT5 + GLM-4-Voice audio + face cb512 + face_motion_ratio 4
+    modality_setup:
+      params:
+        audio_fps: ${lm.lom_v2.params.audio_samplerate}
+        audio_down: ${lm.lom_v2.params.audio_down_sampling}
+        motion_fps: ${lm.lom_v2.params.motion_framerate}
+        motion_down: ${lm.lom_v2.params.motion_down_sampling}
+    modality_tokenizer:
+      vae_face:  {target: lom.archs.lom_vq.VQVAEConvZeroDSUS1_PaperVersion, params: {vae_layer: 3, code_num: 512, codebook_size: 512, vae_quantizer_lambda: 1, vae_test_dim: 112}}   # v2 ViBES face (1x)
+      vae_hand:  {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion,  params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: 180}}
+      vae_upper: {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion,  params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: 78}}
+      vae_lower: {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion,  params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: 54}}
+      vae_global: {target: lom.archs.lom_vq.VAEConvZero, params: {vae_layer: 4, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: 61}}
+
+LOGGER:
+  TYPE: ['wandb']
+  VAL_EVERY_STEPS: 1000000
+  WANDB: {params: {project: language_motion}}

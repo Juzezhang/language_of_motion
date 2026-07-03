@@ -57,12 +57,12 @@ def main():
         if len(cfg.DEVICE) > 1 else 'auto',
         benchmark=False,
         deterministic=False,
-        # num_sanity_val_steps=0
+        num_sanity_val_steps=0,   # skip generate-based sanity-val for a fast start (it works via the bucketed-pad generate fix, just slow)
     )
     logger.info("Trainer initialized")
 
-    # Strict load pretrianed model
-    if cfg.TRAIN.PRETRAINED:
+    # Strict load pretrianed model (skip when RESUME: the ckpt_path resume below loads the full state)
+    if cfg.TRAIN.PRETRAINED and not cfg.TRAIN.RESUME:
         load_pretrained_without_vqvae(cfg, model, logger)
 
     # Strict load vae model

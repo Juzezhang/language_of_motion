@@ -19,14 +19,18 @@ DATASET:
     SPLIT_ROOT: "/data/datasets/HumanML3D" # HumanML3D splits directory
     MEAN_STD_PATH: model_files/t2m_evaluators/
   BEAT2:
-    ROOT: /data/datasets/BEAT2/beat_english_v2.0.0 # BEAT2 directory 
+    ROOT: datasets/BEAT2/beat_english_v2.0.0 # BEAT2 directory
     MEAN_STD_PATH: model_files/t2m/
+  TFHP:
+    ROOT: /simurgh2/users/juze/datasets/TFHP # HDTF_TFHP (DiffPoseTalk): face-only (FLAME) + GLM-4-Voice audio
+  YouTube_Synthetic:
+    ROOT: /simurgh2/users/juze/datasets/YouTube_Talking_Synthetic # synthetic talking-face: face-only (FLAME, cb512 1x) + GLM-4-Voice audio
   AMASS:
-    ROOT: /data/datasets/AMASS # AMASS directory
+    ROOT: datasets/AMASS # AMASS directory
   AMASS_Mixed:
     ROOT: /data/datasets/AMASS_p2p # AMASS directory
   LIBRISPEECH:
-    ROOT: "/data/datasets/LibriSpeech" # LibriSpeech directory  
+    ROOT: "datasets/LibriSpeech/LibriSpeech" # LibriSpeech directory
   BEAT2_AMASS:
     ROOT: /data/datasets/beat2_amass # BEAT2 directory
     MEAN_STD_PATH: model_files/t2m_evaluators/

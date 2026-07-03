@@ -17,3 +17,10 @@ __pycache__/
 *.pyc
 configs/mics/
 mics/
+datasets
+
+# internal test / one-off inference scripts (debugging only, not for open-source release)
+test_varlen_generate.py
+demo_v2_a2m_B.py
+demo_v2_a2m_B_face.py
+a2f_decoder/

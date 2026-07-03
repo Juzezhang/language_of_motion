@@ -1,0 +1,39 @@
+# Language of Motion v2 LM config.
+# Differences vs v1 (configs/lm/lom.yaml):
+#   * audio tokens come from GLM-4-Voice (codebook 16384, 12.5 tok/s) instead of HuBERT (500).
+#   * the T5 language model uses FlashT5/FAT5 (flash_attention_type: fat5) instead of turbot5.
+# NOTE: v2 needs transformers>=4.43 (for the GLM-4-Voice tokenizer); see README "Language of Motion v2".
+target: lom.archs.lom.MLM
+params:
+  model_type: t5
+  model_path: ./model_files/t5_models/flan-t5-base
+  stage: ${TRAIN.STAGE}
+  motion_codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+  audio_codebook_size: 16384            # v2: GLM-4-Voice speech-token codebook (v1 HuBERT = 500)
+  flash_attention_type: fat5            # v2: FlashT5/FAT5 (v1 used flash_attention: True -> turbot5)
+  ablation: ${ABLATION}
+  max_length: 2048                      # v2: test_length=256 -> face(1024)+3xbody(256)+BOS/EOS ~1800 fits (~40s window, full clips)
+  motion_down_sampling: 4
+  audio_down_sampling: 1280             # GLM-4-Voice: 16000/12.5 = 1280 samples per token (v1 HuBERT = 320)
+  face_motion_ratio: 4                  # v2: face token rate / body token rate (1x face vs 4x body)
+  motion_framerate: 25                  # v2: 25 fps (ViBES), so body=6.25 tok/s, face=25 tok/s
+  audio_samplerate: 16000
+  modalities:
+    motion:
+      codebook_size: 0
+      prefix: "motion_id"
+    face:
+      codebook_size: 512                # v2: ViBES face VQ (1x downsample, codebook 512)
+      prefix: "face_id"
+    hand:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "hand_id"
+    upper:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "upper_id"
+    lower:
+      codebook_size: ${vq.lom_vq_motion.params.codebook_size}
+      prefix: "lower_id"
+    audio:
+      codebook_size: 16386              # 16384 GLM-4-Voice codes + 2 (BOS/EOS), mirrors v1's 500+2
+      prefix: "audio_id"

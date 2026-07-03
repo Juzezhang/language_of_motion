@@ -147,7 +147,7 @@ class Audio2MotionDataset(data.Dataset):
                 new_name_list.append(name)
                 length_list.append(len(sample_data['face']))
             except Exception as e:
-                logger.warning(f"Error processing {name}: {str(e)}")
+                print(f"Error processing {name}: {str(e)}")
                 continue
 
         name_list, length_list = zip(
@@ -394,8 +394,7 @@ class Audio2MotionDataset(data.Dataset):
         # Load motion data
         pose_data = np.load(pose_file, allow_pickle=True)
         n, c = pose_data["poses"].shape[0], pose_data["poses"].shape[1]
-        assert 30%self.args.pose_fps == 0, 'pose_fps should be an aliquot part of 30'
-        stride = int(30/self.args.pose_fps)
+        stride = max(1, round(30 / self.args.pose_fps))   # v2: 25fps native -> stride 1 (data already at pose_fps); 30fps-divisors unchanged
         pose_each_file = pose_data["poses"][::stride]
         trans_each_file = pose_data["trans"][::stride]
         shape_each_file = np.repeat(pose_data["betas"].reshape(1, 300), pose_each_file.shape[0], axis=0)

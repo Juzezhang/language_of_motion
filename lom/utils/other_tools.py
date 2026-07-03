@@ -453,6 +453,29 @@ def velocity2position(data_seq, dt, init_pos):
             res_trans.append(res)
     return torch.cat(res_trans, dim=1)
 
+
+def integrate_local_velocity(local_vel, global_orient_aa, init_pos=None):
+    """ViBES root-translation recovery (GENMO-style).
+
+    The Global-VAE reconstructs a root *local* (pelvis-frame) per-frame velocity. We rotate it into
+    world space by the pelvis global orientation and integrate (cumulative sum) over all 3 axes --
+    unlike LoM's velocity2position which integrates an already-world velocity on x/z and takes y raw.
+
+      local_vel:        (T, 3) root local velocity (pelvis frame), e.g. rec_global[..., 54:57]
+      global_orient_aa: (T, 3) pelvis orientation in axis-angle (rec_pose[:, :3])
+      init_pos:         (3,) optional world start (default origin)
+    returns trans: (T, 3) world translation.
+    """
+    from lom.utils.rotation_conversions import axis_angle_to_6d, rotation_6d_to_matrix
+    R_mat = rotation_6d_to_matrix(axis_angle_to_6d(global_orient_aa))   # (T, 3, 3)
+    world_vel = torch.einsum("tij,tj->ti", R_mat, local_vel)            # local -> world
+    pos = torch.zeros_like(world_vel)
+    if init_pos is not None:
+        pos[0] = init_pos
+    if world_vel.shape[0] > 1:
+        pos[1:] = pos[0:1] + torch.cumsum(world_vel[1:], dim=0)         # integrate (frame-0 vel = 0)
+    return pos
+
 def estimate_angular_velocity(rot_seq, dt):
     '''
     Given a batch of sequences of T rotation matrices, estimates angular velocity at T-2 steps.

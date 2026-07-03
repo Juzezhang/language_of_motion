@@ -1,0 +1,98 @@
+NAME: VQVAE_Mixed_Compositional_v2_beat2   # v2 body tokenization: BEAT2 @ 25fps, lom_vq (4x)
+ACCELERATOR: 'gpu'
+NUM_NODES: 1
+DEVICE: [0]
+
+Selected_part: compositional
+Representation_type:
+  compositional:
+    face:  {ori: beat_smplx_joints, tar: beat_smplx_face,  vae_test_dim: 106}
+    hand:  {ori: beat_smplx_joints, tar: beat_smplx_hand,  vae_test_dim: 180}
+    upper: {ori: beat_smplx_joints, tar: beat_smplx_upper, vae_test_dim: 78}
+    lower: {ori: beat_smplx_joints, tar: beat_smplx_lower, vae_test_dim: 54}
+
+TRAIN:
+  STAGE: vqvae
+  NUM_WORKERS: 4
+  BATCH_SIZE: 32
+  END_EPOCH: 999999
+  RESUME: ''
+  PRETRAINED: ''
+  PRECISION: '32'
+  LOSS_MESH: False
+  LOSS_6D: False
+  OPTIM: {target: Adam, params: {lr: 1e-4, weight_decay: 0.0}}
+
+EVAL: {BATCH_SIZE: 32, SPLIT: test}
+
+TEST:
+  CHECKPOINTS_FACE: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_HAND: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_UPPER: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_LOWER: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  CHECKPOINTS_GLOBAL: ./model_files/pretrained_cpt/lom_vq_ds/lom_vq.ckpt
+  SPLIT: test
+  TEST_LENGTH: 120
+  BATCH_SIZE: 4
+
+DATASET:
+  motion_representation: "rotation"
+  target: lom.data.MixedDataset.MixedDataModule
+  vary_length: False
+  pose_fps: 25                       # v2: 25 fps
+  e_path:  weights/AESKConv_240_100.bin
+  e_name: VAESKConv
+  datasets:
+    - name: "BEAT2"
+      stride: 20
+      pose_length: 64
+      pose_fps: 25                   # v2: 25 fps
+      training_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+      additional_data: True
+      pose_rep: smplxflame_25        # v2: 25 fps SMPL-X
+      foot_contact_path: foot_contacts_25   # auto-computed for 25 fps (avoids 30fps length mismatch)
+      code_path: "TOKENS_DS4_v2_body"       # body only; v2 face comes from get_face_code_v2
+  datasets_test:
+    - name: "BEAT2"
+      stride: 20
+      pose_length: 64
+      pose_fps: 25
+      training_speakers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+      additional_data: True
+      pose_rep: smplxflame_25
+      foot_contact_path: foot_contacts_25
+      code_path: "TOKENS_DS4_v2_body"
+
+METRIC:
+  TYPE: ['BodyMetrics', 'GlobalMetrics']
+  REGION_PATH: model_files/FLAME2020/FLAME_masks.pkl
+  TEMPLATE_PATH: model_files/face_template_no_global.npz
+
+LOSS:
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_COMMIT: 0.02
+  LAMBDA_CLS: 1.0
+  ABLATION: {RECONS_LOSS: 'l1_smooth'}
+
+model:
+  target: lom.models.lom.Language_Motion
+  params:
+    task: 't2m'
+    modality_setup:
+      params:
+        audio_fps: ${lm.lom.params.audio_samplerate}
+        audio_down: ${lm.lom.params.audio_down_sampling}
+        motion_fps: ${lm.lom.params.motion_framerate}
+        motion_down: ${lm.lom.params.motion_down_sampling}
+    modality_tokenizer:
+      vae_face:  {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion, params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: "${Representation_type.${Selected_part}.face.vae_test_dim}"}}
+      vae_hand:  {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion, params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: "${Representation_type.${Selected_part}.hand.vae_test_dim}"}}
+      vae_upper: {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion, params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: "${Representation_type.${Selected_part}.upper.vae_test_dim}"}}
+      vae_lower: {target: lom.archs.lom_vq.VQVAEConvZeroDSUS_PaperVersion, params: {vae_layer: 3, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: "${Representation_type.${Selected_part}.lower.vae_test_dim}"}}
+      vae_global: {target: lom.archs.lom_vq.VAEConvZero, params: {vae_layer: 4, code_num: 256, codebook_size: 256, vae_quantizer_lambda: 1, vae_test_dim: 61}}
+
+LOGGER:
+  TYPE: []
+  VAL_EVERY_STEPS: 1000000
+  WANDB: {params: {project: lom}}

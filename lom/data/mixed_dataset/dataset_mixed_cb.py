@@ -59,6 +59,10 @@ class MixedDatasetCB(data.Dataset):
         self.args = args
         self.unit_length = args.unit_length
         self.vary_length = args.vary_length
+        try:
+            self.vary_window = bool(args.vary_window)   # v2: randomize window length per sample (variable-length training)
+        except Exception:
+            self.vary_window = False
         self.split = split
         self.audio_down = float(audio_down)  # 320
         self.test_length = args.test_length
@@ -97,12 +101,245 @@ class MixedDatasetCB(data.Dataset):
                 self.data_dict.update(self.data_dict_amass_mixed)
                 self.metadata.extend(self.metadata_amass_mixed)
                 print(f"Loaded AMASS_Mixed dataset with {len(self.metadata_amass_mixed)} samples")
+            elif dataset_name == "TFHP":
+                self._load_tfhp(config)
+                self.data_dict.update(self.data_dict_tfhp)
+                self.metadata.extend(self.metadata_tfhp)
+                print(f"Loaded TFHP dataset with {len(self.metadata_tfhp)} samples")
+            elif dataset_name == "YouTube_Synthetic":
+                self._load_youtube_synthetic(config)
+                self.data_dict.update(self.data_dict_yt)
+                self.metadata.extend(self.metadata_yt)
+                print(f"Loaded YouTube_Synthetic dataset with {len(self.metadata_yt)} samples")
             else:
                 raise NotImplementedError(f"Unknown dataset name {dataset_name}")
 
         # Load the language model for text processing
         # self.nlp = spacy.load('en_core_web_sm')
         # self.std_text = std_text
+
+    def _load_tfhp(self, config):
+        """
+        Load the TFHP (HDTF_TFHP / DiffPoseTalk) dataset: FACE-ONLY (FLAME) + GLM-4-Voice audio.
+        Added to the A2M task with the body (hand/upper/lower) MASKED to -100 in the loss
+        (handled in MLM.forward via the task's 'face_only' flag).
+
+        TFHP is a <seq>/<take> talking-head video (~40-300 s) that was passively split into
+        contiguous ~4 s clips: <code_path>/<seq>/<take>/<clip>.npy (face, 25 tok/s) and
+        <code_path_audio>/<seq>/<take>/<clip>.npy (GLM audio, 12.5 tok/s). We CONCATENATE each
+        take's clips (in clip order -> recovers the full take), then window like BEAT2:
+        face window = test_length * face_ratio, audio sliced to match, stepped by ~50%% overlap.
+        If self.vary_window, each window's length is randomized (body in [test_length//4, test_length])
+        so audio/motion lengths vary across samples (to test length-correspondence learning).
+        Body tokens are zero placeholders (masked in loss).
+        """
+        import glob
+        from collections import defaultdict
+        data_root = self.args["TFHP"].ROOT
+        code_path = config.get("code_path")
+        code_path_audio = config.get("code_path_audio")
+        instructions_file = config.get("instructions_file")
+
+        face_ratio = max(1, int(round(self.args.pose_fps / self.motion_token_fps)))   # 25 / 6.25 = 4
+        face_fps = float(self.args.pose_fps)                                          # face is 1x -> 25
+        tl = int(self.test_length)
+        face_window = tl * face_ratio                                                 # full-window face tokens (1024)
+        stride_face = max(1, face_window // 2)                                        # ~50%% overlap
+        L_min = max(1, tl // 4)
+        vary = bool(getattr(self, 'vary_window', False))
+        cap = 80                                                                      # max windows per take
+
+        cache_dir = pjoin(data_root, 'cache'); os.makedirs(cache_dir, exist_ok=True)
+        tag = f"take_win{tl}_{'vary' if vary else 'fixed'}"
+        cache_file = pjoin(cache_dir, f"TFHP_{self.split}_{code_path.replace('/', '-')}_{tag}_{'debug' if self.debug else 'full'}.pkl")
+        if os.path.exists(cache_file):
+            print(f"Loading TFHP from cache: {cache_file}")
+            with open(cache_file, 'rb') as f:
+                c = pickle.load(f)
+            self.data_dict_tfhp, self.metadata_tfhp = c['data_dict'], c['metadata']
+            return
+
+        print(f"Processing TFHP (concat clips per take -> {'variable' if vary else 'fixed'} ~{tl}-body windows)...")
+        instructions_path = self.task_path if self.task_path else pjoin(self.args["BEAT2"].ROOT, instructions_file)
+        instructions = json.load(open(instructions_path, 'r'))
+        tasks_tfhp = []
+        for task in instructions:
+            for subtask in instructions[task]:
+                t = dict(instructions[task][subtask])
+                if t.get('class') == 'a2m':
+                    t['face_only'] = True
+                    tasks_tfhp.append(t)
+
+        face_dir = pjoin(data_root, code_path)
+        audio_dir = pjoin(data_root, code_path_audio)
+        takes = defaultdict(list)
+        for ff in glob.glob(pjoin(face_dir, '*', '*', '*.npy')):
+            seq, take, clip = ff[len(face_dir) + 1:-4].split('/')
+            takes[(seq, take)].append(clip)
+
+        self.data_dict_tfhp = {}
+        self.metadata_tfhp = []
+        for (seq, take), clips in takes.items():
+            if len(self.metadata_tfhp) > self.maxdata:
+                break
+            faces, audios, ok = [], [], True
+            for c in sorted(clips):
+                af = pjoin(audio_dir, seq, take, c + '.npy')
+                if not os.path.exists(af):
+                    ok = False; break
+                fa = np.load(pjoin(face_dir, seq, take, c + '.npy')); fa = np.asarray(fa[0] if fa.ndim == 2 else fa).reshape(-1)
+                au = np.load(af); au = np.asarray(au[0] if au.ndim == 2 else au).reshape(-1)
+                faces.append(fa); audios.append(au)
+            if not ok or not faces:
+                continue
+            face_cat = np.concatenate(faces); audio_cat = np.concatenate(audios)
+            n_face = face_cat.shape[0]
+            fs = 0; wi = 0
+            while wi < cap:
+                bl = random.randint(L_min, tl) if vary else tl
+                fw = bl * face_ratio
+                if fs + fw <= n_face:
+                    fe = fs + fw                                   # full window
+                elif fs == 0:
+                    fe = n_face                                    # short take: use the whole take
+                else:
+                    break                                          # no more full windows
+                sample_face = face_cat[fs:fe]
+                real_bl = max(1, int(round(sample_face.shape[0] / face_ratio)))
+                aw = max(1, int(round(real_bl / self.motion_token_fps * self.audio_token_fps)))
+                a_s = int(round(fs / face_fps * self.audio_token_fps))
+                sample_audio = audio_cat[a_s:a_s + aw]
+                if sample_face.shape[0] >= face_ratio and sample_audio.shape[0] >= 1:
+                    dummy = np.zeros(real_bl, dtype=np.int64)      # placeholder body; masked (-100) in loss
+                    name_base = f'tfhp_{seq}_{take}_{wi}'
+                    for t in tasks_tfhp:
+                        nm = name_base + '_' + t['class'] + '_faceonly'
+                        self.data_dict_tfhp[nm] = {
+                            'face_token': sample_face.astype(np.int64),
+                            'hand_token': dummy.copy(), 'upper_token': dummy.copy(), 'lower_token': dummy.copy(),
+                            'text': '', 'audio': sample_audio.astype(np.int64),
+                            'tasks': t, 'emotion_label': 'unknown',
+                        }
+                        self.metadata_tfhp.append(nm)
+                    wi += 1
+                if fe >= n_face:
+                    break
+                fs += stride_face
+
+        print(f"TFHP processed: {len(self.metadata_tfhp)} windows from {len(takes)} takes")
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump({'data_dict': self.data_dict_tfhp, 'metadata': self.metadata_tfhp},
+                            f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            print(f"TFHP cache save failed: {e}")
+
+    def _load_youtube_synthetic(self, config):
+        """
+        Load the YouTube_Talking_Synthetic dataset: FACE-ONLY (synthetic FLAME) + GLM-4-Voice audio.
+        Added to the A2M task like TFHP, with body (hand/upper/lower) MASKED to -100 in the loss
+        (the task's 'face_only' flag; handled in MLM.forward).
+
+        Layout is FLAT per-clip (no <seq>/<take> nesting): <code_path>/<id>.npy (face, codebook 512,
+        25 tok/s, shape (1,N) or (N,)) and <code_path_audio>/<id>.npy (GLM audio, 12.5 tok/s); the
+        clip ids come from <ROOT>/<split>.txt. Each clip is already a full speaking segment (face =
+        2x audio), so — unlike TFHP — there is NO clip concatenation; we window each clip directly:
+        face window = test_length * face_ratio, audio sliced to match, ~50%% overlap. If
+        self.vary_window, the window length is randomized (to vary audio/motion length per sample).
+        Body tokens are zero placeholders (masked in loss).
+        """
+        data_root = self.args["YouTube_Synthetic"].ROOT
+        code_path = config.get("code_path")
+        code_path_audio = config.get("code_path_audio")
+        instructions_file = config.get("instructions_file")
+
+        face_ratio = max(1, int(round(self.args.pose_fps / self.motion_token_fps)))   # 25 / 6.25 = 4
+        face_fps = float(self.args.pose_fps)                                          # face is 1x -> 25
+        tl = int(self.test_length)
+        face_window = tl * face_ratio
+        stride_face = max(1, face_window // 2)                                        # ~50%% overlap
+        L_min = max(1, tl // 4)
+        vary = bool(getattr(self, 'vary_window', False))
+        cap = 80                                                                      # max windows per clip
+
+        cache_dir = pjoin(data_root, 'cache'); os.makedirs(cache_dir, exist_ok=True)
+        tag = f"clip_win{tl}_{'vary' if vary else 'fixed'}"
+        cache_file = pjoin(cache_dir, f"YTSynth_{self.split}_{code_path.replace('/', '-')}_{tag}_{'debug' if self.debug else 'full'}.pkl")
+        if os.path.exists(cache_file):
+            print(f"Loading YouTube_Synthetic from cache: {cache_file}")
+            with open(cache_file, 'rb') as f:
+                c = pickle.load(f)
+            self.data_dict_yt, self.metadata_yt = c['data_dict'], c['metadata']
+            return
+
+        print(f"Processing YouTube_Synthetic ({'variable' if vary else 'fixed'} ~{tl}-body windows)...")
+        instructions_path = self.task_path if self.task_path else pjoin(self.args["BEAT2"].ROOT, instructions_file)
+        instructions = json.load(open(instructions_path, 'r'))
+        tasks_yt = []
+        for task in instructions:
+            for subtask in instructions[task]:
+                t = dict(instructions[task][subtask])
+                if t.get('class') == 'a2m':
+                    t['face_only'] = True
+                    tasks_yt.append(t)
+
+        face_dir = pjoin(data_root, code_path)
+        audio_dir = pjoin(data_root, code_path_audio)
+        split_file = pjoin(data_root, f"{self.split}.txt")
+        if not os.path.exists(split_file):
+            split_file = pjoin(data_root, "train.txt")
+        clip_ids = [l.strip() for l in open(split_file) if l.strip()]
+
+        self.data_dict_yt = {}
+        self.metadata_yt = []
+        for cid in clip_ids:
+            if len(self.metadata_yt) > self.maxdata:
+                break
+            ff = pjoin(face_dir, cid + '.npy'); af = pjoin(audio_dir, cid + '.npy')
+            if not (os.path.exists(ff) and os.path.exists(af)):
+                continue
+            face_cat = np.asarray(np.load(ff)); face_cat = (face_cat[0] if face_cat.ndim == 2 else face_cat).reshape(-1)
+            audio_cat = np.asarray(np.load(af)); audio_cat = (audio_cat[0] if audio_cat.ndim == 2 else audio_cat).reshape(-1)
+            n_face = face_cat.shape[0]
+            fs = 0; wi = 0
+            while wi < cap:
+                bl = random.randint(L_min, tl) if vary else tl
+                fw = bl * face_ratio
+                if fs + fw <= n_face:
+                    fe = fs + fw                                   # full window
+                elif fs == 0:
+                    fe = n_face                                    # short clip: use the whole clip
+                else:
+                    break
+                sample_face = face_cat[fs:fe]
+                real_bl = max(1, int(round(sample_face.shape[0] / face_ratio)))
+                aw = max(1, int(round(real_bl / self.motion_token_fps * self.audio_token_fps)))
+                a_s = int(round(fs / face_fps * self.audio_token_fps))
+                sample_audio = audio_cat[a_s:a_s + aw]
+                if sample_face.shape[0] >= face_ratio and sample_audio.shape[0] >= 1:
+                    dummy = np.zeros(real_bl, dtype=np.int64)      # placeholder body; masked (-100) in loss
+                    name_base = f'ytsynth_{cid}_{wi}'
+                    for t in tasks_yt:
+                        nm = name_base + '_' + t['class'] + '_faceonly'
+                        self.data_dict_yt[nm] = {
+                            'face_token': sample_face.astype(np.int64),
+                            'hand_token': dummy.copy(), 'upper_token': dummy.copy(), 'lower_token': dummy.copy(),
+                            'text': '', 'audio': sample_audio.astype(np.int64),
+                            'tasks': t, 'emotion_label': 'unknown',
+                        }
+                        self.metadata_yt.append(nm)
+                    wi += 1
+                if fe >= n_face:
+                    break
+                fs += stride_face
+
+        print(f"YouTube_Synthetic processed: {len(self.metadata_yt)} windows from {len(clip_ids)} clips")
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump({'data_dict': self.data_dict_yt, 'metadata': self.metadata_yt},
+                            f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            print(f"YouTube_Synthetic cache save failed: {e}")
 
     def _load_librispeech(self, config):
         """
@@ -296,6 +533,7 @@ class MixedDatasetCB(data.Dataset):
                 m_token_hands = np.load(pjoin(motion_dir_beat2, 'hands', f'{name}.npy'))
                 m_token_lower = np.load(pjoin(motion_dir_beat2, 'lower', f'{name}.npy'))
                 m_token_upper = np.load(pjoin(motion_dir_beat2, 'upper', f'{name}.npy'))
+                face_ratio = max(1, round(m_token_face.shape[1] / m_token_hands.shape[1]))  # v2: 1x face = face_ratio x body (v1: 1)
                 audio = np.load(pjoin(audio_dir_beat2, name + ".npy"))
 
                 emotion_data = pd.read_csv(pjoin(data_root, 'emotion_label', name + ".csv"))
@@ -306,7 +544,7 @@ class MixedDatasetCB(data.Dataset):
                 # Load corresponding text annotations from TextGrid
                 word_file = pjoin(data_root, 'textgrid', name + ".TextGrid")
                 tgrid = tg.TextGrid.fromFile(word_file)
-                motion_length = m_token_face.shape[1]
+                motion_length = m_token_hands.shape[1]   # body token length (face is face_ratio x longer in v2)
 
                 if self.vary_length == True:
                     # Call the function using your tgrid
@@ -320,7 +558,7 @@ class MixedDatasetCB(data.Dataset):
                         fin_idx = int(end_time * self.motion_token_fps)
                         audio_start = int(start_time * self.audio_token_fps)
                         audio_end = int(end_time * self.audio_token_fps)
-                        sample_face = m_token_face[0, start_idx:fin_idx]
+                        sample_face = m_token_face[0, face_ratio*start_idx:face_ratio*fin_idx]   # v2: face is face_ratio x longer
                         sample_hand = m_token_hands[0, start_idx:fin_idx]
                         sample_lower = m_token_lower[0, start_idx:fin_idx]
                         sample_upper = m_token_upper[0, start_idx:fin_idx]
@@ -357,16 +595,17 @@ class MixedDatasetCB(data.Dataset):
                         start_time = start_idx / self.motion_token_fps * 1000.
                         audio_start = clip_s_f_audio + math.floor(clip_index * stride * self.audio_token_fps / self.motion_token_fps)
 
-                        fin_idx = start_idx + self.test_length
+                        win_len = random.randint(max(1, self.test_length // 4), self.test_length) if self.vary_window else self.test_length
+                        fin_idx = start_idx + win_len
                         fin_time = fin_idx / self.motion_token_fps * 1000.
-                        audio_end = audio_start + audio_short_length
+                        audio_end = audio_start + (int(win_len / self.motion_token_fps * self.audio_token_fps) if self.vary_window else audio_short_length)
 
                         if start_time >= 1000. * emotion_start_time and fin_time <= 1000. * emotion_stop_time:
                             emotion_label_temp = emotion_label
                         else:
                             emotion_label_temp = 'unknown'
 
-                        sample_face = m_token_face[0, start_idx:fin_idx]
+                        sample_face = m_token_face[0, face_ratio*start_idx:face_ratio*fin_idx]   # v2: face is face_ratio x longer
                         sample_hand = m_token_hands[0, start_idx:fin_idx]
                         sample_lower = m_token_lower[0, start_idx:fin_idx]
                         sample_upper = m_token_upper[0, start_idx:fin_idx]
@@ -760,7 +999,7 @@ class MixedDatasetCB(data.Dataset):
             vary_length_str = "VaryLength" if self.vary_length else "NoVaryLength"
             debug_str = "Debug" if self.debug else "NoDebug"
             
-            config_str = f"{dataset_type}_{self.split}_{self.stage}_{self.test_length}_{code_path}_{code_path_audio}_{additional_data}_{speakers_str}_{vary_length_str}_{debug_str}"
+            config_str = f"{dataset_type}_{self.split}_{self.stage}_{self.test_length}_{code_path}_{code_path_audio}_{additional_data}_{speakers_str}_{vary_length_str}_{'varywin' if self.vary_window else 'fixedwin'}_{debug_str}"
         
         elif dataset_type == "AMASS":
             code_path = config.get("code_path")

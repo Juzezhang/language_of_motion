@@ -34,6 +34,7 @@ class MLM(nn.Module):
         audio_samplerate: float = 16000.0,
         motion_down_sampling: int = 1,
         audio_down_sampling: int = 320,   ### audio down sample rate
+        face_motion_ratio: int = 1,       # v2: face token rate / body token rate (1x face = 4x body)
         predict_ratio: float = 0.2,
         inbetween_ratio: float = 0.25,
         max_length: int = 512,
@@ -41,6 +42,7 @@ class MLM(nn.Module):
         noise_density: float = 0.15,
         mean_noise_span_length: int = 3,
         flash_attention: bool = False,
+        flash_attention_type: str = None,   # 'turbot5' | 'fat5' | None(HF). Overrides flash_attention.
         modalities: dict = None,
         **kwargs,
     ) -> None:
@@ -58,6 +60,7 @@ class MLM(nn.Module):
         self.audio_samplerate = audio_samplerate
         self.motion_down_sampling = motion_down_sampling
         self.audio_down_sampling = audio_down_sampling
+        self.face_motion_ratio = face_motion_ratio
         self.predict_ratio = predict_ratio
         self.inbetween_ratio = inbetween_ratio
         self.mask_ratio_audio = 0.08
@@ -69,10 +72,17 @@ class MLM(nn.Module):
         # Instantiate language model
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, legacy=True)
         if model_type == "t5":
-            if flash_attention:
+            # Attention backend: 'turbot5' (flash via Triton) | 'fat5' (catie-aq/flashT5,
+            # vendored in third_party/flashT5) | None (vanilla HF). For back-compat,
+            # flash_attention=True with no explicit type falls back to turbot5.
+            attn_backend = flash_attention_type or ("turbot5" if flash_attention else None)
+            if attn_backend == "turbot5":
                 from turbot5 import T5ForConditionalGeneration
                 self.language_model = T5ForConditionalGeneration.from_pretrained(
                     model_path, attention_type = 'flash',use_triton=True)
+            elif attn_backend == "fat5":
+                from lom.utils.build_fat5 import build_fat5_from_hf
+                self.language_model = build_fat5_from_hf(model_path)
             else:
                 from transformers import T5ForConditionalGeneration
                 self.language_model = T5ForConditionalGeneration.from_pretrained(
@@ -143,6 +153,18 @@ class MLM(nn.Module):
             face_tokens.device)
 
         labels_input_ids[labels_input_ids == 0] = -100
+
+        # Face-only samples (e.g. TFHP, no body GT): mask the body (hand/upper/lower) token labels to
+        # -100 so the cross-entropy supervises only face+audio. Their body tokens are placeholders.
+        if isinstance(tasks, (list, tuple)):
+            face_only = [bool(isinstance(t, dict) and t.get('face_only')) for t in tasks]
+            if any(face_only):
+                body_lo = self.tokenizer.convert_tokens_to_ids('<hand_id_0>')
+                body_hi = self.tokenizer.convert_tokens_to_ids(f'<lower_id_{self.lower_codebook_size + 2}>')
+                rows = torch.tensor(face_only, device=labels_input_ids.device).view(-1, 1)
+                is_body = (labels_input_ids >= body_lo) & (labels_input_ids <= body_hi)
+                labels_input_ids[rows & is_body] = -100
+
         outputs = self.language_model(
             input_ids=source_input_ids,
             attention_mask=source_attention_mask,
@@ -152,12 +174,74 @@ class MLM(nn.Module):
 
         return outputs
     
+    def _build_forced_structure(self, target_lengths, max_length):
+        """Build per-element decode-plan tensors that pin each motion block to an EXACT length.
+
+        The a2m output is four self-delimiting blocks in fixed order — face, hand, upper, lower —
+        each `<part_id_{cb}> ...codes... <part_id_{cb+1}>`, then EOS (id 1, as the FAT5 loop treats
+        id 1 as EOS). This plan drives the structural tokens (per-part start/end + EOS) at their
+        known positions and constrains every free slot to that part's code range, so the decoder
+        only chooses CONTENT while the lengths are guaranteed: face = L*face_motion_ratio,
+        hand = upper = lower = L  (L = target body length = audio/2).
+
+        Returns a dict of [B, T] LongTensors {'force_ids', 'free_lo', 'free_hi'} (force_ids = -1
+        marks a free code slot), or None.
+        """
+        fr = max(1, int(self.face_motion_ratio))
+
+        def tid(t):
+            return self.tokenizer.convert_tokens_to_ids(t)
+
+        # (start_id, end_id, code_lo_id, code_hi_id, length_multiplier)
+        specs = [
+            (tid(f'<face_id_{self.face_codebook_size}>'),  tid(f'<face_id_{self.face_codebook_size + 1}>'),
+             tid('<face_id_0>'),  tid(f'<face_id_{self.face_codebook_size - 1}>'),  fr),
+            (tid(f'<hand_id_{self.hand_codebook_size}>'),  tid(f'<hand_id_{self.hand_codebook_size + 1}>'),
+             tid('<hand_id_0>'),  tid(f'<hand_id_{self.hand_codebook_size - 1}>'),  1),
+            (tid(f'<upper_id_{self.upper_codebook_size}>'), tid(f'<upper_id_{self.upper_codebook_size + 1}>'),
+             tid('<upper_id_0>'), tid(f'<upper_id_{self.upper_codebook_size - 1}>'), 1),
+            (tid(f'<lower_id_{self.lower_codebook_size}>'), tid(f'<lower_id_{self.lower_codebook_size + 1}>'),
+             tid('<lower_id_0>'), tid(f'<lower_id_{self.lower_codebook_size - 1}>'), 1),
+        ]
+        eos_id = 1   # FAT5 generate stops on token id 1
+
+        plans = []
+        for L in target_lengths:
+            L = max(1, int(L))
+            # Clamp so the whole plan fits in max_length: total = (fr+3)*L + 9.
+            while (fr + 3) * L + 9 > max_length and L > 1:
+                L -= 1
+            force, lo, hi = [], [], []
+            for (s, e, clo, chi, mult) in specs:
+                force.append(s); lo.append(0); hi.append(0)                 # block start (forced)
+                for _ in range(mult * L):
+                    force.append(-1); lo.append(clo); hi.append(chi)        # free code slot
+                force.append(e); lo.append(0); hi.append(0)                 # block end (forced)
+            force.append(eos_id); lo.append(0); hi.append(0)                # final EOS (forced)
+            plans.append((force, lo, hi))
+
+        T = max(len(p[0]) for p in plans)
+        B = len(plans)
+        force_ids = torch.zeros((B, T), dtype=torch.long)
+        free_lo = torch.zeros((B, T), dtype=torch.long)
+        free_hi = torch.zeros((B, T), dtype=torch.long)
+        for b, (force, lo, hi) in enumerate(plans):
+            n = len(force)
+            force_ids[b, :n] = torch.tensor(force, dtype=torch.long)
+            free_lo[b, :n] = torch.tensor(lo, dtype=torch.long)
+            free_hi[b, :n] = torch.tensor(hi, dtype=torch.long)
+            # positions past this element's plan -> forced pad (0); harmless (post-EOS is masked out)
+        return {'force_ids': force_ids.to(self.device),
+                'free_lo': free_lo.to(self.device),
+                'free_hi': free_hi.to(self.device)}
+
     def generate_direct(self,
                         input: List[str] = None,
                         max_length: int = 512,
                         num_beams: int = 1,
                         do_sample: bool = True,
-                        bad_words_ids: List[int] = None):
+                        bad_words_ids: List[int] = None,
+                        target_lengths: List[int] = None):
 
         # Device
         self.device = self.language_model.device
@@ -172,13 +256,14 @@ class MLM(nn.Module):
                                          return_tensors="pt")
         source_input_ids = source_encoding.input_ids.to(self.device)
 
-        outputs = self.language_model.generate(
-            source_input_ids,
-            max_length=max_length,
-            num_beams=num_beams,
-            do_sample=do_sample,
-            bad_words_ids=bad_words_ids,
-        )
+        gen_kwargs = dict(max_length=max_length, num_beams=num_beams,
+                          do_sample=do_sample, bad_words_ids=bad_words_ids)
+        # Decode-time length enforcement (FAT5 backend): pin each motion block to an exact length.
+        if target_lengths is not None:
+            forced_structure = self._build_forced_structure(target_lengths, max_length)
+            if forced_structure is not None:
+                gen_kwargs['forced_structure'] = forced_structure
+        outputs = self.language_model.generate(source_input_ids, **gen_kwargs)
         outputs_string = self.tokenizer.batch_decode(outputs,
                                                      skip_special_tokens=True)
 
@@ -193,7 +278,8 @@ class MLM(nn.Module):
                              context: Optional[Dict[str, Any]] = None,
                              task: str = "t2m",
                              stage: str = 'train',
-                             tasks: dict = None):
+                             tasks: dict = None,
+                             enforce_length: bool = True):
         """
         Generate motion tokens conditioned on various inputs with simplified parameter structure.
         
@@ -294,7 +380,8 @@ class MLM(nn.Module):
             lower_strings = [''] * batch_size
             combine_strings = [''] * batch_size
             emotion_strings = [''] * batch_size if emotion_label is None else emotion_label
-            
+            a2m_target_lengths = None   # per-element exact body length for decode-time enforcement (a2m)
+
             # Task-specific processing
             if task == "t2m":
                 assert texts is not None, "Text input required for t2m task"
@@ -317,6 +404,13 @@ class MLM(nn.Module):
                     'output': ['']
                 }] * batch_size
                 lengths = [0] * batch_size
+                # Decode-time length enforcement: the exact target body length is set by the audio
+                # token count (audio token rate / motion token rate = 12.5 / 6.25 = 2x), i.e. body =
+                # audio/2, face = body*face_motion_ratio. Pin each block to this exact length below.
+                if enforce_length and audio_lengths is not None:
+                    motion_rate = self.motion_framerate / self.motion_down_sampling
+                    audio_rate = self.audio_samplerate / self.audio_down_sampling
+                    a2m_target_lengths = [max(1, round(al * motion_rate / audio_rate)) for al in audio_lengths]
             elif task == "at2m":
                 assert audio_tokens is not None, "Audio tokens required for at2m task"
                 audio_lengths = [0] * batch_size if audio_lengths is None else audio_lengths
@@ -340,7 +434,8 @@ class MLM(nn.Module):
             
             # Generate tokens using the language model
             face_tokens, hand_tokens, upper_tokens, lower_tokens, cleaned_text = self.generate_direct(
-                inputs, max_length=self.max_length, num_beams=1, do_sample=True
+                inputs, max_length=self.max_length, num_beams=1, do_sample=True,
+                target_lengths=a2m_target_lengths
             )
             
             # Return generated tokens as a dictionary for consistency
@@ -365,13 +460,13 @@ class MLM(nn.Module):
             hand_i = hand_token[i].cpu() if hand_token[i].device.type == 'cuda' else hand_token[i]
             upper_i = upper_token[i].cpu() if upper_token[i].device.type == 'cuda' else upper_token[i]
             lower_i = lower_token[i].cpu() if lower_token[i].device.type == 'cuda' else lower_token[i]
-            face_list = face_i.tolist()[:lengths[i]]
+            face_list = face_i.tolist()[:lengths[i] * self.face_motion_ratio]   # v2: face is face_motion_ratio x longer
             hand_list = hand_i.tolist()[:lengths[i]]
             upper_list = upper_i.tolist()[:lengths[i]]
             lower_list = lower_i.tolist()[:lengths[i]]
 
             face_string_tmp = f'<face_id_{self.face_codebook_size}>'
-            for j in range(lengths[i]):
+            for j in range(len(face_list)):   # v2: face block = face_motion_ratio x body length
                 face_string_tmp = face_string_tmp + ''.join(f'<face_id_{int(face_list[j])}>')
             face_string_tmp += f'<face_id_{self.face_codebook_size+1}>'
             face_string.append(face_string_tmp)

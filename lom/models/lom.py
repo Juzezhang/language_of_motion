@@ -9,7 +9,7 @@ from lom.losses.lom import GPTLosses, VAELosses
 from lom.models.base import BaseModel
 from lom.optimizers.loss_factory import get_loss_func
 from lom.utils.rotation_conversions import rotation_6d_to_matrix, rotation_6d_to_axis_angle, matrix_to_axis_angle, matrix_to_rotation_6d, axis_angle_to_6d
-from lom.utils.other_tools import velocity2position, estimate_linear_velocity
+from lom.utils.other_tools import velocity2position, estimate_linear_velocity, integrate_local_velocity
 from .base import BaseModel
 import json
 from lom.data.mixed_dataset.data_tools import (
@@ -246,8 +246,9 @@ class Language_Motion(BaseModel):
         """Unify the length of all tensors in all lists to the maximum length among the four lists."""
 
         max_length = motion_length
+        face_length = max_length * getattr(self.lm, 'face_motion_ratio', 1)   # v2: face block is ratio x longer (1x face vs 4x body)
         # Unify the length of each tensor in the four lists
-        outputs_face = [self.pad_tensor(tensor, max_length) for tensor in outputs_face]
+        outputs_face = [self.pad_tensor(tensor, face_length) for tensor in outputs_face]
         outputs_hand = [self.pad_tensor(tensor, max_length) for tensor in outputs_hand]
         outputs_lower = [self.pad_tensor(tensor, max_length) for tensor in outputs_lower]
         outputs_upper = [self.pad_tensor(tensor, max_length) for tensor in outputs_upper]
@@ -426,9 +427,17 @@ class Language_Motion(BaseModel):
             rec_upper = self.vq_model_upper.decode(feats_upper.int())
             rec_lower = self.vq_model_lower.decode(feats_lower.int())
 
+            # v2: face(1x) and body(4x) can decode to slightly different frame counts -> align to the min
+            n_min = min(rec_face.shape[1], rec_upper.shape[1], rec_lower.shape[1], rec_hands.shape[1])
+            rec_face, rec_upper, rec_lower, rec_hands = rec_face[:, :n_min], rec_upper[:, :n_min], rec_lower[:, :n_min], rec_hands[:, :n_min]
+
             rec_face = rec_face.float()
-            rec_exps = rec_face[:, :, 6:]
-            rec_pose_jaw = rec_face[:, :, :6]
+            if rec_face.shape[-1] == 112:   # v2 ViBES face: head(0:6) + jaw(6:12) + expr(12:112)
+                rec_pose_jaw = rec_face[:, :, 6:12]
+                rec_exps = rec_face[:, :, 12:]
+            else:                            # v1 face: jaw(0:6) + expr(6:106)
+                rec_exps = rec_face[:, :, 6:]
+                rec_pose_jaw = rec_face[:, :, :6]
             rec_pose_legs = rec_lower[:, :, :54]
             bs, n = rec_pose_jaw.shape[0], rec_pose_jaw.shape[1]
             rec_pose_upper = rec_upper.reshape(bs, n, 13, 6)
@@ -648,9 +657,17 @@ class Language_Motion(BaseModel):
         rec_upper = self.vae_upper.decode(rec_index_upper.int())
         rec_lower = self.vae_lower.decode(rec_index_lower.int())
         rec_hands = self.vae_hand.decode(rec_index_hands.int())
+        # v2: face(1x) and body(4x) can decode to different frame counts -> align to the min
+        # also cap to the GT length: a variable-length model can decode longer than the GT, which would break the tar_pose reshape below
+        n_min = min(rec_face.shape[1], rec_upper.shape[1], rec_lower.shape[1], rec_hands.shape[1], tar_pose_6d.shape[1])
+        rec_face, rec_upper, rec_lower, rec_hands = rec_face[:, :n_min], rec_upper[:, :n_min], rec_lower[:, :n_min], rec_hands[:, :n_min]
         rec_face = rec_face.float()
-        rec_exps = rec_face[:, :, 6:]
-        rec_pose_jaw = rec_face[:, :, :6]
+        if rec_face.shape[-1] == 112:   # v2 ViBES face: head(0:6) + jaw(6:12) + expr(12:112)
+            rec_pose_jaw = rec_face[:, :, 6:12]
+            rec_exps = rec_face[:, :, 12:]
+        else:                            # v1 face: jaw(0:6) + expr(6:106)
+            rec_exps = rec_face[:, :, 6:]
+            rec_pose_jaw = rec_face[:, :, :6]
         rec_pose_legs = rec_lower[:, :, :54]
         bs, n = rec_pose_jaw.shape[0], rec_pose_jaw.shape[1]
         rec_pose_upper = rec_upper.reshape(bs, n, 13, 6)
@@ -679,10 +696,14 @@ class Language_Motion(BaseModel):
         rec_global = self.vae_global(to_global)
 
         rec_trans_v_s = rec_global["rec_pose"][:, :, 54:57]
-        rec_x_trans = velocity2position(rec_trans_v_s[:, :, 0:1], 1 / self.args.pose_fps, tar_trans[:, 0, 0:1])
-        rec_z_trans = velocity2position(rec_trans_v_s[:, :, 2:3], 1 / self.args.pose_fps, tar_trans[:, 0, 2:3])
-        rec_y_trans = rec_trans_v_s[:, :, 1:2]
-        rec_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
+        if getattr(self.lm, 'face_motion_ratio', 1) > 1:   # v2: ViBES local-velocity integration (rotate root local vel by pelvis, integrate)
+            go = rec_pose[:, :3].reshape(bs, n, 3)
+            rec_trans = torch.stack([integrate_local_velocity(rec_trans_v_s[b], go[b]) for b in range(bs)], dim=0)
+        else:                                              # v1: EMAGE-style world-velocity
+            rec_x_trans = velocity2position(rec_trans_v_s[:, :, 0:1], 1 / self.args.pose_fps, tar_trans[:, 0, 0:1])
+            rec_z_trans = velocity2position(rec_trans_v_s[:, :, 2:3], 1 / self.args.pose_fps, tar_trans[:, 0, 2:3])
+            rec_y_trans = rec_trans_v_s[:, :, 1:2]
+            rec_trans = torch.cat([rec_x_trans, rec_y_trans, rec_z_trans], dim=-1)
         tar_pose_6d = tar_pose_6d[:, :n, :]
         tar_exps = tar_exps[:, :n, :]
         tar_trans = tar_trans[:, :n, :]
@@ -746,6 +767,7 @@ class Language_Motion(BaseModel):
             "tar_trans": tar_trans,
             "tar_exps": tar_exps,
             "rec_exps": rec_exps,
+            "rec_face": rec_face,   # raw 112D ViBES face feature: head6D(0:6) + jaw6D(6:12) + expr100(12:112), for FLAME face render
             "vertices_rec": vertices_rec,
             "vertices_rec_face": vertices_rec_face,
             "vertices_tar_face": vertices_tar_face,
@@ -1712,6 +1734,8 @@ class Language_Motion(BaseModel):
         elif self.hparams.stage in ["lm_instruct", "lm_pretrain", "lm_pretrain_audio"] and split in ["train"]:
             rs_set = self.train_lm_forward(batch)
             loss = self._losses['losses_' + split].update(rs_set)
+            if batch_idx % 50 == 0:   # stdout heartbeat (progress bar is silent under nohup/no-TTY; wandb may be off)
+                print(f"[train] epoch {self.trainer.current_epoch} step {batch_idx} loss {float(loss):.4f}", flush=True)
 
         # Compute the metrics
         if split in ["val", "test"]:
@@ -1887,4 +1911,6 @@ class Language_Motion(BaseModel):
             elif self.hparams.task == "a2m":
                 return rs_set["rec_pose"], rs_set["tar_pose"], rs_set["tar_beta"], rs_set["rec_trans"], rs_set["tar_trans"], rs_set["tar_exps"], rs_set["rec_exps"]
 
+        if split == "train" and loss is not None:   # per-step train loss to wandb (epoch is long)
+            self.log("train/loss_step", loss, on_step=True, on_epoch=False, prog_bar=True, rank_zero_only=True)
         return loss
