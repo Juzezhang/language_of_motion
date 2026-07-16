@@ -7,11 +7,11 @@ RENDER:
   INPUT_MODE: 'npy'
   DIR: ''
   NPY: '___no_need__'
-  DENOISING: False
+  DENOISING: True
   OLDRENDER: True
   # ["ultra", "high", "med", "low"]
   # RES: 'high'
-  RES: 'low'
+  RES: 'med'
   DOWNSAMPLE: False
   FPS: 30.0
   CANONICALIZE: True
@@ -19,5 +19,5 @@ RENDER:
   NUM: 8
   MODE: '___no_need__' #sequence frame video
   VID_EXT: mp4
-  ALWAYS_ON_FLOOR: false
+  ALWAYS_ON_FLOOR: true
   GT: false
